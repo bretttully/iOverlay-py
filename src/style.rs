@@ -1,0 +1,188 @@
+//! Python wrappers for stroke and outline style configuration.
+
+use pyo3::prelude::*;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
+use std::f64::consts::PI;
+
+use i_overlay_core::mesh::style::{LineCap, LineJoin, OutlineStyle, StrokeStyle};
+
+use crate::enums::{PyLineCap, PyLineJoin};
+
+/// Default angle for round caps and joins (radians).
+const DEFAULT_ROUND_ANGLE: f64 = 0.1 * PI;
+
+/// Default angle for miter joins (radians).
+const DEFAULT_MITER_ANGLE: f64 = 0.1 * PI;
+
+/// Stroke style configuration for creating stroked paths.
+///
+/// Defines how a path is converted to a stroked shape with a specified width,
+/// cap styles at the endpoints, and join styles at corners.
+#[gen_stub_pyclass]
+#[pyclass(name = "StrokeStyle", module = "i_overlay", frozen)]
+#[derive(Debug, Clone)]
+pub struct PyStrokeStyle {
+    /// The width of the stroke.
+    #[pyo3(get)]
+    pub width: f64,
+    /// The cap style at the start of the stroke.
+    #[pyo3(get)]
+    pub start_cap: PyLineCap,
+    /// The cap style at the end of the stroke.
+    #[pyo3(get)]
+    pub end_cap: PyLineCap,
+    /// The join style where two lines meet.
+    #[pyo3(get)]
+    pub join: PyLineJoin,
+    /// Angle parameter for round caps (radians).
+    #[pyo3(get)]
+    pub round_cap_angle: f64,
+    /// Angle parameter for round/miter joins (radians).
+    #[pyo3(get)]
+    pub join_angle: f64,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl PyStrokeStyle {
+    /// Create a new StrokeStyle with the given width.
+    ///
+    /// Args:
+    ///     width: The stroke width.
+    ///     start_cap: Cap style at the start (default: Butt).
+    ///     end_cap: Cap style at the end (default: Butt).
+    ///     join: Join style at corners (default: Bevel).
+    ///     round_cap_angle: Angle for round caps in radians (default: ~0.314).
+    ///     join_angle: Angle for round/miter joins in radians (default: ~0.314).
+    #[new]
+    #[pyo3(signature = (width, *, start_cap=PyLineCap::Butt, end_cap=PyLineCap::Butt, join=PyLineJoin::Bevel, round_cap_angle=None, join_angle=None))]
+    fn new(
+        width: f64,
+        start_cap: PyLineCap,
+        end_cap: PyLineCap,
+        join: PyLineJoin,
+        round_cap_angle: Option<f64>,
+        join_angle: Option<f64>,
+    ) -> Self {
+        Self {
+            width: width.max(0.0),
+            start_cap,
+            end_cap,
+            join,
+            round_cap_angle: round_cap_angle.unwrap_or(DEFAULT_ROUND_ANGLE),
+            join_angle: join_angle.unwrap_or(DEFAULT_MITER_ANGLE),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "StrokeStyle(width={}, start_cap={:?}, end_cap={:?}, join={:?})",
+            self.width, self.start_cap, self.end_cap, self.join
+        )
+    }
+}
+
+impl PyStrokeStyle {
+    /// Convert to Rust StrokeStyle.
+    pub fn to_rust_style(&self) -> StrokeStyle<[f64; 2], f64> {
+        let start_cap = match self.start_cap {
+            PyLineCap::Butt => LineCap::Butt,
+            PyLineCap::Round => LineCap::Round(self.round_cap_angle),
+            PyLineCap::Square => LineCap::Square,
+        };
+
+        let end_cap = match self.end_cap {
+            PyLineCap::Butt => LineCap::Butt,
+            PyLineCap::Round => LineCap::Round(self.round_cap_angle),
+            PyLineCap::Square => LineCap::Square,
+        };
+
+        let join = match self.join {
+            PyLineJoin::Bevel => LineJoin::Bevel,
+            PyLineJoin::Miter => LineJoin::Miter(self.join_angle),
+            PyLineJoin::Round => LineJoin::Round(self.join_angle),
+        };
+
+        StrokeStyle {
+            width: self.width,
+            start_cap,
+            end_cap,
+            join,
+        }
+    }
+}
+
+/// Outline style configuration for creating offset shapes.
+///
+/// Defines how a shape's boundary is offset inward and/or outward
+/// to create a thickened outline.
+#[gen_stub_pyclass]
+#[pyclass(name = "OutlineStyle", module = "i_overlay", frozen)]
+#[derive(Debug, Clone)]
+pub struct PyOutlineStyle {
+    /// The outer offset distance.
+    #[pyo3(get)]
+    pub outer_offset: f64,
+    /// The inner offset distance.
+    #[pyo3(get)]
+    pub inner_offset: f64,
+    /// The join style at corners.
+    #[pyo3(get)]
+    pub join: PyLineJoin,
+    /// Angle parameter for round/miter joins (radians).
+    #[pyo3(get)]
+    pub join_angle: f64,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl PyOutlineStyle {
+    /// Create a new OutlineStyle with the given offset.
+    ///
+    /// Args:
+    ///     offset: The offset distance (used for both inner and outer if not specified separately).
+    ///     outer_offset: The outer offset distance (overrides offset if specified).
+    ///     inner_offset: The inner offset distance (overrides offset if specified).
+    ///     join: Join style at corners (default: Bevel).
+    ///     join_angle: Angle for round/miter joins in radians (default: ~0.314).
+    #[new]
+    #[pyo3(signature = (offset=1.0, *, outer_offset=None, inner_offset=None, join=PyLineJoin::Bevel, join_angle=None))]
+    fn new(
+        offset: f64,
+        outer_offset: Option<f64>,
+        inner_offset: Option<f64>,
+        join: PyLineJoin,
+        join_angle: Option<f64>,
+    ) -> Self {
+        Self {
+            outer_offset: outer_offset.unwrap_or(offset),
+            inner_offset: inner_offset.unwrap_or(offset),
+            join,
+            join_angle: join_angle.unwrap_or(DEFAULT_MITER_ANGLE),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "OutlineStyle(outer_offset={}, inner_offset={}, join={:?})",
+            self.outer_offset, self.inner_offset, self.join
+        )
+    }
+}
+
+impl PyOutlineStyle {
+    /// Convert to Rust OutlineStyle.
+    pub fn to_rust_style(&self) -> OutlineStyle<f64> {
+        let join = match self.join {
+            PyLineJoin::Bevel => LineJoin::Bevel,
+            PyLineJoin::Miter => LineJoin::Miter(self.join_angle),
+            PyLineJoin::Round => LineJoin::Round(self.join_angle),
+        };
+
+        OutlineStyle {
+            outer_offset: self.outer_offset,
+            inner_offset: self.inner_offset,
+            join,
+        }
+    }
+}

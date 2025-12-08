@@ -76,6 +76,88 @@ xor = graph.extract_shapes(OverlayRule.Xor)
 - `Solver`: Algorithm selection and precision settings
 - `Precision`: Numerical precision configuration
 - `ClipRule`: Clipping behavior (invert, boundary inclusion)
+- `StrokeStyle`: Stroke width, line caps, and joins
+- `OutlineStyle`: Offset distances and joins
+
+## More Examples
+
+### Simplify Self-Intersecting Shapes
+
+```python
+from i_overlay import simplify_shape, FillRule
+
+# A figure-8 shape (self-intersecting)
+figure_eight = [[[(0, 0), (2, 2), (2, 0), (0, 2)]]]
+
+# Simplify to resolve self-intersection
+result = simplify_shape(figure_eight, FillRule.EvenOdd)
+# Result: two separate triangles
+```
+
+### Slice Shapes with Polylines
+
+```python
+from i_overlay import slice_by, FillRule
+
+# A square
+shapes = [[[(0, 0), (2, 0), (2, 2), (0, 2)]]]
+
+# A horizontal cutting line
+polylines = [[(0, 1), (2, 1)]]
+
+# Slice the square into two rectangles
+result = slice_by(shapes, polylines, FillRule.EvenOdd)
+```
+
+### Clip Polylines by Shapes
+
+```python
+from i_overlay import clip_by, FillRule, ClipRule
+
+# A line passing through a square
+polylines = [[(-1, 1), (3, 1)]]
+shapes = [[[(0, 0), (2, 0), (2, 2), (0, 2)]]]
+
+# Keep only the portion inside the square
+result = clip_by(polylines, shapes, FillRule.EvenOdd, ClipRule())
+
+# Or keep portions outside (invert)
+result = clip_by(polylines, shapes, FillRule.EvenOdd, ClipRule(invert=True))
+```
+
+### Create Stroked Paths
+
+```python
+from i_overlay import stroke, StrokeStyle, LineCap, LineJoin
+
+# An open path
+paths = [[(0, 0), (10, 0), (10, 10)]]
+
+# Create a stroke with width 2 and round caps
+style = StrokeStyle(2.0, start_cap=LineCap.Round, end_cap=LineCap.Round)
+result = stroke(paths, style)
+
+# For closed paths, set is_closed=True
+closed_paths = [[(0, 0), (10, 0), (10, 10), (0, 10)]]
+result = stroke(closed_paths, style, is_closed=True)
+```
+
+### Create Offset Outlines
+
+```python
+from i_overlay import outline, OutlineStyle, LineJoin
+
+# A square shape (counter-clockwise for outer boundary)
+shapes = [[[(0, 0), (10, 0), (10, 10), (0, 10)]]]
+
+# Expand/contract the shape boundary
+style = OutlineStyle(1.0, join=LineJoin.Round)
+result = outline(shapes, style)
+
+# Use different inner and outer offsets
+style = OutlineStyle(offset=1.0, outer_offset=2.0, inner_offset=0.5)
+result = outline(shapes, style)
+```
 
 ## Development
 
