@@ -53,6 +53,7 @@ tests:
     requirements:
       run:
         - pytest
+        - shapely
     files:
       source:
         - tests
