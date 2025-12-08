@@ -9,6 +9,8 @@ use pyo3_stub_gen::define_stub_info_gatherer;
 mod clip;
 mod enums;
 mod options;
+mod overlay;
+mod types;
 
 pub use clip::PyClipRule;
 pub use enums::PyContourDirection;
@@ -54,6 +56,9 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySolver>()?;
     m.add_class::<PyOverlayOptions>()?;
     m.add_class::<PyClipRule>()?;
+
+    // Register functions
+    m.add_function(wrap_pyfunction!(overlay::overlay, m)?)?;
 
     // Add version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
