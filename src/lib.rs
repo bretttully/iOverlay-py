@@ -6,8 +6,11 @@
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 
+mod clip;
 mod enums;
+mod options;
 
+pub use clip::PyClipRule;
 pub use enums::PyContourDirection;
 pub use enums::PyFillRule;
 pub use enums::PyLineCap;
@@ -15,6 +18,9 @@ pub use enums::PyLineJoin;
 pub use enums::PyOverlayRule;
 pub use enums::PyShapeType;
 pub use enums::PyStrategy;
+pub use options::PyOverlayOptions;
+pub use options::PyPrecision;
+pub use options::PySolver;
 
 /// i_overlay - Python bindings for iOverlay boolean operations on 2D polygons
 ///
@@ -42,6 +48,12 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStrategy>()?;
     m.add_class::<PyLineCap>()?;
     m.add_class::<PyLineJoin>()?;
+
+    // Register configuration classes
+    m.add_class::<PyPrecision>()?;
+    m.add_class::<PySolver>()?;
+    m.add_class::<PyOverlayOptions>()?;
+    m.add_class::<PyClipRule>()?;
 
     // Add version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
