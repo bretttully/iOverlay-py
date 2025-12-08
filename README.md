@@ -178,6 +178,34 @@ pytest tests/
 cargo run --bin stub_gen
 ```
 
+### Fuzzer
+
+A multi-core fuzzer is included to test boolean operations against Shapely as a reference:
+
+```bash
+# Run full fuzzer (all generators, default iterations)
+python -m tests._fuzzer
+
+# Run with specific generator and number of runs
+python -m tests._fuzzer --generator spots --runs 100 --workers 8
+
+# Reproduce a specific failing seed (saves JSON to fuzzer_failures/)
+python -m tests._fuzzer --generator spots --seed 12
+
+# Save failure report to custom directory
+python -m tests._fuzzer --generator spots --seed 12 --output-dir docs
+
+# Test a failure JSON against raw Rust implementation
+python -m tests._fuzzer --test-rust fuzzer_failures/fuzzer-spots-12.json
+```
+
+Available generators: `spots`, `center_targets`, `radius_targets`, `random_polygons`
+
+The fuzzer compares i_overlay results with Shapely, checking for:
+- Area differences beyond tolerance
+- OGC validity violations (polygons must have connected interiors)
+- Different polygon counts between implementations
+
 ## License
 
 MIT License - see LICENSE file for details.
