@@ -23,6 +23,7 @@ pub use enums::PyStrategy;
 pub use options::PyOverlayOptions;
 pub use options::PyPrecision;
 pub use options::PySolver;
+pub use overlay::PyFloatOverlayGraph;
 
 /// i_overlay - Python bindings for iOverlay boolean operations on 2D polygons
 ///
@@ -57,7 +58,8 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOverlayOptions>()?;
     m.add_class::<PyClipRule>()?;
 
-    // Register functions
+    // Register overlay classes and functions
+    m.add_class::<PyFloatOverlayGraph>()?;
     m.add_function(wrap_pyfunction!(overlay::overlay, m)?)?;
 
     // Add version
