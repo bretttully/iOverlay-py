@@ -83,23 +83,31 @@ be properly processed by most GIS operations.
 
 ### Valid vs Invalid Hole Configurations
 
+**VALID**: Holes sharing ONE vertex (interior remains connected)
 ```
-VALID: Holes touching at ONE point (tangent)
-┌─────────────┐
-│  ┌───┐      │
-│  │   │      │
-│  └───●───┐  │   ● = single touch point
-│      │   │  │
-│      └───┘  │
-└─────────────┘
+  ┌─────────────┐
+  │  ┌───┐      │
+  │  │ ░ │      │   ● = single shared vertex -- interior remains connected
+  │  └───●───┐  │   ░ = holes
+  │      │ ░ │  │
+  │      └───┘  │
+  └─────────────┘
+```
 
-INVALID: Holes touching at TWO points (disconnects interior)
-┌─────────────┐
-│  ┌───●───┐  │
-│  │       │  │   The interior between the
-│  │       │  │   two ● points is disconnected
-│  └───●───┘  │   from the rest of the polygon
-└─────────────┘
+**INVALID**: Holes sharing TWO vertices (disconnects interior)
+```
+  0   1   2   3   4   5
+5 ┌───────────────────┐
+  │                   │
+4 │   ┌───────┐       │
+  │   │ ░   ░ │       │   Two L-shaped holes share vertices ● at (2,2) and (3,3)
+3 │   │   ┌───●───┐   │
+  │   │ ░ │   │ ░ │   │   ░ = holes
+2 │   └───●───┘   │   │
+  │       │ ░   ░ │   │   The shared diagonal edge disconnects the interior
+1 │       └───────┘   │
+  │                   │
+0 └───────────────────┘
 ```
 
 ## Visual Comparison
