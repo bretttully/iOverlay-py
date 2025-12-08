@@ -4,6 +4,7 @@ Usage:
     python -m tests._fuzzer --runs 1000 --workers 8
     python -m tests._fuzzer --seed 12345  # Reproduce a specific seed
     python -m tests._fuzzer --generator spots --runs 100
+    python -m tests._fuzzer --test-rust fuzzer_failures/fuzzer-spots-12.json
 """
 
 from __future__ import annotations
@@ -12,8 +13,11 @@ import argparse
 from pathlib import Path
 import sys
 
+import pandas as pd
+
 from .generators import (
     RandomCenterTargetsGenerator,
+    RandomPolyGenerator,
     RandomPolygonsGenerator,
     RandomRadiusTargetsGenerator,
     RandomSpotsGenerator,
@@ -23,6 +27,7 @@ from .runner import (
     generate_test_case,
     run_fuzzer,
     save_failure_report,
+    test_rust_implementation,
 )
 
 GENERATORS = {
@@ -69,6 +74,45 @@ def reproduce_seed(generator_name: str, seed: int, verbose: bool = True) -> int:
     return 1
 
 
+def _run_full_fuzzer(args: argparse.Namespace) -> int:
+    """Run full fuzzer across generators."""
+    generators_to_run = (
+        list(GENERATORS.items()) if args.generator == "all" else [(args.generator, GENERATORS[args.generator])]
+    )
+
+    all_failures: list[tuple[RandomPolyGenerator, int, pd.DataFrame]] = []
+
+    for _name, generator_cls in generators_to_run:
+        generator = generator_cls()
+        df = run_fuzzer(
+            generator,
+            n_procs=args.workers,
+            n_tests=args.runs,
+            verbose=not args.quiet,
+        )
+
+        errors = df[df.error.notna()]
+        if len(errors) > 0:
+            failing_seeds = errors["seed"].unique()
+            if not args.quiet:
+                print(f"  Failing seeds: {failing_seeds}")
+
+            for seed in failing_seeds:
+                seed_errors = errors[errors["seed"] == seed]
+                filepath = save_failure_report(generator, seed, seed_errors, args.output_dir)
+                if not args.quiet:
+                    print(f"  Saved: {filepath}")
+                all_failures.append((generator, seed, seed_errors))
+
+    if args.generate_tests and all_failures:
+        print("\n--- Generated Test Cases ---")
+        for generator, seed, errors in all_failures:
+            print(generate_test_case(generator, seed, str(errors.iloc[0]["error"])))
+        print("-----------------------------")
+
+    return 1 if all_failures else 0
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Fuzz tester for i_overlay boolean operations")
@@ -113,8 +157,24 @@ def main() -> int:
         action="store_true",
         help="Generate pytest test cases for failures",
     )
+    parser.add_argument(
+        "--test-rust",
+        type=Path,
+        default=None,
+        metavar="JSON_FILE",
+        help="Test a failure JSON against raw Rust implementation",
+    )
 
     args = parser.parse_args()
+
+    # Test against Rust implementation
+    if args.test_rust is not None:
+        if not args.test_rust.exists():
+            print(f"Error: File not found: {args.test_rust}", file=sys.stderr)
+            return 1
+        success, output = test_rust_implementation(args.test_rust)
+        print(output)
+        return 0 if success else 1
 
     # Reproduce specific seed
     if args.seed is not None:
@@ -124,41 +184,7 @@ def main() -> int:
         return reproduce_seed(args.generator, args.seed, verbose=not args.quiet)
 
     # Run full fuzzer
-    generators_to_run = (
-        list(GENERATORS.items()) if args.generator == "all" else [(args.generator, GENERATORS[args.generator])]
-    )
-
-    all_failures = []
-
-    for _name, generator_cls in generators_to_run:
-        generator = generator_cls()
-        df = run_fuzzer(
-            generator,
-            n_procs=args.workers,
-            n_tests=args.runs,
-            verbose=not args.quiet,
-        )
-
-        errors = df[df.error.notna()]
-        if len(errors) > 0:
-            failing_seeds = errors["seed"].unique()
-            if not args.quiet:
-                print(f"  Failing seeds: {failing_seeds}")
-
-            for seed in failing_seeds:
-                seed_errors = errors[errors["seed"] == seed]
-                filepath = save_failure_report(generator, seed, seed_errors, args.output_dir)
-                if not args.quiet:
-                    print(f"  Saved: {filepath}")
-                all_failures.append((generator, seed, seed_errors))
-
-    if args.generate_tests and all_failures:
-        print("\n--- Generated Test Cases ---")
-        for generator, seed, errors in all_failures:
-            print(generate_test_case(generator, seed, str(errors.iloc[0]["error"])))
-        print("-----------------------------")
-
-    return 1 if all_failures else 0
+    return _run_full_fuzzer(args)
 
 
 if __name__ == "__main__":

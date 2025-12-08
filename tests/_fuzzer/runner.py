@@ -11,6 +11,8 @@ import dataclasses
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import time
 from typing import TYPE_CHECKING
 
@@ -311,12 +313,36 @@ def save_failure_report(
     # Regenerate the test case
     test_case = TestCase(generator, seed)
 
+    # Collect failing results
+    failing_results: dict[str, Shapes] = {}
+    for _, row in error_df.iterrows():
+        func_name = row["function"]
+        # Parse overlay_rule and fill_rule from function name
+        # Format: "overlay_OverlayRule.{rule}_FillRule.{rule}" or "graph_extract_..."
+        if func_name.startswith("overlay_") or func_name.startswith("graph_extract_"):
+            # Extract OverlayRule.X and FillRule.Y from the function name
+            match = re.search(r"OverlayRule\.(\w+)_FillRule\.(\w+)", func_name)
+            if match:
+                overlay_name = match.group(1)
+                fill_name = match.group(2)
+                try:
+                    overlay_rule = getattr(OverlayRule, overlay_name)
+                    fill_rule = getattr(FillRule, fill_name)
+                    result = overlay(test_case.subject, test_case.clip, overlay_rule, fill_rule)
+                    # Only save unique results (same overlay+fill combo)
+                    key = f"{overlay_name}_{fill_name}"
+                    if key not in failing_results:
+                        failing_results[key] = result
+                except (AttributeError, Exception):
+                    pass  # Skip if we can't reproduce
+
     report = {
         "generator": generator.name(),
         "seed": int(seed),  # Ensure native int for JSON serialization
         "subject": test_case.subject,
         "clip": test_case.clip,
         "errors": error_df.to_dict(orient="records"),
+        "failing_results": failing_results,
     }
 
     filepath = output_dir / f"fuzzer-{generator.name()}-{seed}.json"
@@ -359,3 +385,46 @@ def generate_test_case(generator: RandomPolyGenerator, seed: int, error: str) ->
             result = overlay(subject, clip, overlay_rule, fill_rule)
             assert isinstance(result, list)
 '''
+
+
+def test_rust_implementation(json_path: Path) -> tuple[bool, str]:
+    """Test a fuzzer failure against the raw Rust implementation.
+
+    This runs the `test_fuzzer_failure` binary to determine if a failure
+    is in the Python bindings or the upstream Rust library.
+
+    Args:
+        json_path: Path to the fuzzer failure JSON file.
+
+    Returns:
+        Tuple of (success, output) where success is True if all Rust tests pass.
+    """
+    # Try to find the binary
+    binary_paths = [
+        Path("target/release/test_fuzzer_failure"),
+        Path("target/debug/test_fuzzer_failure"),
+    ]
+
+    binary = None
+    for p in binary_paths:
+        if p.exists():
+            binary = p
+            break
+
+    if binary is None:
+        return False, "Binary not found. Run: cargo build --bin test_fuzzer_failure"
+
+    try:
+        result = subprocess.run(
+            [str(binary), str(json_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        output = result.stdout + result.stderr
+        return result.returncode == 0, output
+    except subprocess.TimeoutExpired:
+        return False, "Test timed out after 60 seconds"
+    except Exception as e:
+        return False, f"Error running binary: {e}"

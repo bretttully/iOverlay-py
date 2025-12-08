@@ -15,6 +15,10 @@ crate-type = ["cdylib", "rlib"]
 name = "stub_gen"
 path = "src/bin/stub_gen.rs"
 
+[[bin]]
+name = "test_fuzzer_failure"
+path = "src/bin/test_fuzzer_failure.rs"
+
 [features]
 default = []
 # extension-module: Only enable for cdylib Python extension, NOT for stub_gen binary
@@ -33,6 +37,13 @@ features = ["abi3-py313"]
 
 [dependencies.pyo3-stub-gen]
 version = "0.17"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1.0"
 
 [build-dependencies]
 pyo3-build-config = "0.27"
