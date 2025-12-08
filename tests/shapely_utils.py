@@ -1,8 +1,6 @@
 """Utilities for converting between Shapely and i_overlay types."""
 
-from shapely import MultiPolygon, Polygon
-from shapely import Point as ShapelyPoint
-from shapely import box as shapely_box
+import shapely
 from shapely.geometry.base import BaseGeometry
 
 # Type aliases matching i_overlay format
@@ -12,7 +10,7 @@ type Shape = list[Contour]
 type Shapes = list[Shape]
 
 
-def polygon_to_shape(polygon: Polygon) -> Shape:
+def polygon_to_shape(polygon: shapely.Polygon) -> Shape:
     """Convert a Shapely Polygon to i_overlay shape format.
 
     Args:
@@ -52,11 +50,11 @@ def geometry_to_shapes(geom: BaseGeometry) -> Shapes:
     if geom.is_empty:
         return []
 
-    if isinstance(geom, Polygon):
+    if isinstance(geom, shapely.Polygon):
         shape = polygon_to_shape(geom)
         return [shape] if shape else []
 
-    if isinstance(geom, MultiPolygon):
+    if isinstance(geom, shapely.MultiPolygon):
         shapes = []
         for polygon in geom.geoms:
             shape = polygon_to_shape(polygon)
@@ -68,7 +66,7 @@ def geometry_to_shapes(geom: BaseGeometry) -> Shapes:
     raise TypeError(msg)
 
 
-def shapes_to_multipolygon(shapes: Shapes) -> MultiPolygon:
+def shapes_to_multipolygon(shapes: Shapes) -> shapely.MultiPolygon:
     """Convert i_overlay shapes to a Shapely MultiPolygon.
 
     Args:
@@ -83,11 +81,11 @@ def shapes_to_multipolygon(shapes: Shapes) -> MultiPolygon:
             continue
         exterior = shape[0]
         holes = shape[1:] if len(shape) > 1 else None
-        polygon = Polygon(exterior, holes)
+        polygon = shapely.Polygon(exterior, holes)
         if polygon.is_valid and not polygon.is_empty:
             polygons.append(polygon)
 
-    return MultiPolygon(polygons)
+    return shapely.MultiPolygon(polygons)
 
 
 def box(minx: float, miny: float, maxx: float, maxy: float) -> Shapes:
@@ -102,7 +100,7 @@ def box(minx: float, miny: float, maxx: float, maxy: float) -> Shapes:
     Returns:
         Shapes containing a single rectangular shape.
     """
-    return geometry_to_shapes(shapely_box(minx, miny, maxx, maxy))
+    return geometry_to_shapes(shapely.box(minx, miny, maxx, maxy))
 
 
 def circle(x: float, y: float, radius: float, resolution: int = 32) -> Shapes:
@@ -117,7 +115,7 @@ def circle(x: float, y: float, radius: float, resolution: int = 32) -> Shapes:
     Returns:
         Shapes containing a single circular shape.
     """
-    point = ShapelyPoint(x, y)
+    point = shapely.Point(x, y)
     circle_poly = point.buffer(radius, resolution)
     return geometry_to_shapes(circle_poly)
 
@@ -132,5 +130,5 @@ def polygon_with_hole(outer: list[Point], hole: list[Point]) -> Shapes:
     Returns:
         Shapes containing a single shape with a hole.
     """
-    polygon = Polygon(outer, [hole])
+    polygon = shapely.Polygon(outer, [hole])
     return geometry_to_shapes(polygon)
