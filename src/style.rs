@@ -18,6 +18,10 @@ const DEFAULT_MITER_ANGLE: f64 = 0.1 * PI;
 ///
 /// Defines how a path is converted to a stroked shape with a specified width,
 /// cap styles at the endpoints, and join styles at corners.
+///
+/// For custom caps, provide a list of points that define the cap shape.
+/// Points should be relative to the stroke width, where the stroke extends
+/// from -0.5 to 0.5 in the perpendicular direction.
 #[gen_stub_pyclass]
 #[pyclass(name = "StrokeStyle", module = "i_overlay", frozen)]
 #[derive(Debug, Clone)]
@@ -40,6 +44,10 @@ pub struct PyStrokeStyle {
     /// Angle parameter for round/miter joins (radians).
     #[pyo3(get)]
     pub join_angle: f64,
+    /// Custom points for the start cap (overrides start_cap if provided).
+    pub start_cap_points: Option<Vec<[f64; 2]>>,
+    /// Custom points for the end cap (overrides end_cap if provided).
+    pub end_cap_points: Option<Vec<[f64; 2]>>,
 }
 
 #[gen_stub_pymethods]
@@ -54,8 +62,11 @@ impl PyStrokeStyle {
     ///     join: Join style at corners (default: Bevel).
     ///     round_cap_angle: Angle for round caps in radians (default: ~0.314).
     ///     join_angle: Angle for round/miter joins in radians (default: ~0.314).
+    ///     start_cap_points: Custom points for start cap (overrides start_cap).
+    ///     end_cap_points: Custom points for end cap (overrides end_cap).
     #[new]
-    #[pyo3(signature = (width, *, start_cap=PyLineCap::Butt, end_cap=PyLineCap::Butt, join=PyLineJoin::Bevel, round_cap_angle=None, join_angle=None))]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (width, *, start_cap=PyLineCap::Butt, end_cap=PyLineCap::Butt, join=PyLineJoin::Bevel, round_cap_angle=None, join_angle=None, start_cap_points=None, end_cap_points=None))]
     fn new(
         width: f64,
         start_cap: PyLineCap,
@@ -63,6 +74,8 @@ impl PyStrokeStyle {
         join: PyLineJoin,
         round_cap_angle: Option<f64>,
         join_angle: Option<f64>,
+        start_cap_points: Option<Vec<(f64, f64)>>,
+        end_cap_points: Option<Vec<(f64, f64)>>,
     ) -> Self {
         Self {
             width: width.max(0.0),
@@ -71,6 +84,10 @@ impl PyStrokeStyle {
             join,
             round_cap_angle: round_cap_angle.unwrap_or(DEFAULT_ROUND_ANGLE),
             join_angle: join_angle.unwrap_or(DEFAULT_MITER_ANGLE),
+            start_cap_points: start_cap_points
+                .map(|pts| pts.into_iter().map(|(x, y)| [x, y]).collect()),
+            end_cap_points: end_cap_points
+                .map(|pts| pts.into_iter().map(|(x, y)| [x, y]).collect()),
         }
     }
 
@@ -85,16 +102,25 @@ impl PyStrokeStyle {
 impl PyStrokeStyle {
     /// Convert to Rust StrokeStyle.
     pub fn to_rust_style(&self) -> StrokeStyle<[f64; 2], f64> {
-        let start_cap = match self.start_cap {
-            PyLineCap::Butt => LineCap::Butt,
-            PyLineCap::Round => LineCap::Round(self.round_cap_angle),
-            PyLineCap::Square => LineCap::Square,
+        // Use custom cap points if provided, otherwise use the cap style
+        let start_cap = if let Some(ref points) = self.start_cap_points {
+            LineCap::Custom(points.clone())
+        } else {
+            match self.start_cap {
+                PyLineCap::Butt => LineCap::Butt,
+                PyLineCap::Round => LineCap::Round(self.round_cap_angle),
+                PyLineCap::Square => LineCap::Square,
+            }
         };
 
-        let end_cap = match self.end_cap {
-            PyLineCap::Butt => LineCap::Butt,
-            PyLineCap::Round => LineCap::Round(self.round_cap_angle),
-            PyLineCap::Square => LineCap::Square,
+        let end_cap = if let Some(ref points) = self.end_cap_points {
+            LineCap::Custom(points.clone())
+        } else {
+            match self.end_cap {
+                PyLineCap::Butt => LineCap::Butt,
+                PyLineCap::Round => LineCap::Round(self.round_cap_angle),
+                PyLineCap::Square => LineCap::Square,
+            }
         };
 
         let join = match self.join {

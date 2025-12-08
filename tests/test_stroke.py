@@ -209,3 +209,61 @@ class TestStrokeStyleClass:
 
         assert "StrokeStyle" in repr_str
         assert "2" in repr_str
+
+
+class TestStrokeCustomCaps:
+    """Tests for custom line caps."""
+
+    def test_stroke_custom_start_cap(self) -> None:
+        """Test stroking with custom start cap points."""
+        paths = [[(0.0, 0.0), (10.0, 0.0)]]
+        # Arrow-like custom cap (pointing back)
+        custom_cap = [(0.0, -0.5), (-1.0, 0.0), (0.0, 0.5)]
+        style = StrokeStyle(2.0, start_cap_points=custom_cap)
+
+        result = stroke(paths, style)
+        result_geom = shapes_to_multipolygon(result)
+
+        assert len(result) == 1
+        assert result_geom.is_valid
+
+    def test_stroke_custom_end_cap(self) -> None:
+        """Test stroking with custom end cap points."""
+        paths = [[(0.0, 0.0), (10.0, 0.0)]]
+        # Arrow-like custom cap (pointing forward)
+        custom_cap = [(0.0, -0.5), (1.0, 0.0), (0.0, 0.5)]
+        style = StrokeStyle(2.0, end_cap_points=custom_cap)
+
+        result = stroke(paths, style)
+        result_geom = shapes_to_multipolygon(result)
+
+        assert len(result) == 1
+        assert result_geom.is_valid
+
+    def test_stroke_custom_both_caps(self) -> None:
+        """Test stroking with custom caps on both ends."""
+        paths = [[(0.0, 0.0), (10.0, 0.0)]]
+        # Arrow start (pointing back)
+        start_cap = [(0.0, -0.5), (-1.0, 0.0), (0.0, 0.5)]
+        # Arrow end (pointing forward)
+        end_cap = [(0.0, -0.5), (1.0, 0.0), (0.0, 0.5)]
+        style = StrokeStyle(2.0, start_cap_points=start_cap, end_cap_points=end_cap)
+
+        result = stroke(paths, style)
+        result_geom = shapes_to_multipolygon(result)
+
+        assert len(result) == 1
+        assert result_geom.is_valid
+
+    def test_stroke_custom_cap_triangle(self) -> None:
+        """Test stroking with triangular custom cap."""
+        paths = [[(0.0, 0.0), (10.0, 0.0)]]
+        # Triangle cap
+        triangle_cap = [(0.0, -0.5), (0.5, 0.0), (0.0, 0.5)]
+        style = StrokeStyle(2.0, end_cap_points=triangle_cap)
+
+        result = stroke(paths, style)
+        result_geom = shapes_to_multipolygon(result)
+
+        assert len(result) == 1
+        assert result_geom.is_valid

@@ -140,6 +140,12 @@ result = stroke(paths, style)
 # For closed paths, set is_closed=True
 closed_paths = [[(0, 0), (10, 0), (10, 10), (0, 10)]]
 result = stroke(closed_paths, style, is_closed=True)
+
+# Custom caps - define your own cap shape with points
+# Points are relative to stroke width (-0.5 to 0.5 perpendicular)
+arrow_cap = [(0, -0.5), (1, 0), (0, 0.5)]  # Arrow pointing forward
+style = StrokeStyle(2.0, end_cap_points=arrow_cap)
+result = stroke(paths, style)
 ```
 
 ### Create Offset Outlines
