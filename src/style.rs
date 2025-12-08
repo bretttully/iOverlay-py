@@ -9,9 +9,13 @@ use i_overlay_core::mesh::style::{LineCap, LineJoin, OutlineStyle, StrokeStyle};
 use crate::enums::{PyLineCap, PyLineJoin};
 
 /// Default angle for round caps and joins (radians).
+/// Controls the segment length for approximating curves: L/R where L is segment length, R is radius.
 const DEFAULT_ROUND_ANGLE: f64 = 0.1 * PI;
 
-/// Default angle for miter joins (radians).
+/// Default miter limit angle (radians).
+/// For Miter joins, this is the minimum angle at which a miter is used.
+/// At sharper angles (below this threshold), the join falls back to a bevel
+/// to prevent extremely long, spiky miters.
 const DEFAULT_MITER_ANGLE: f64 = 0.1 * PI;
 
 /// Stroke style configuration for creating stroked paths.
@@ -39,9 +43,12 @@ pub struct PyStrokeStyle {
     #[pyo3(get)]
     pub join: PyLineJoin,
     /// Angle parameter for round caps (radians).
+    /// Controls curve approximation: smaller values = smoother curves with more segments.
     #[pyo3(get)]
     pub round_cap_angle: f64,
-    /// Angle parameter for round/miter joins (radians).
+    /// Angle parameter for joins (radians).
+    /// - For Round joins: controls curve approximation (smaller = smoother).
+    /// - For Miter joins: minimum angle threshold; sharper corners fall back to bevel.
     #[pyo3(get)]
     pub join_angle: f64,
     /// Custom points for the start cap (overrides start_cap if provided).
@@ -63,7 +70,10 @@ impl PyStrokeStyle {
     ///     end_cap: Cap style at the end (default: Butt).
     ///     join: Join style at corners (default: Bevel).
     ///     round_cap_angle: Angle for round caps in radians (default: ~0.314).
-    ///     join_angle: Angle for round/miter joins in radians (default: ~0.314).
+    ///         Smaller values produce smoother curves with more segments.
+    ///     join_angle: Angle parameter for joins in radians (default: ~0.314).
+    ///         For Round joins: smaller values = smoother curves.
+    ///         For Miter joins: minimum angle threshold; sharper corners use bevel instead.
     ///     start_cap_points: Custom points for start cap (overrides start_cap).
     ///     end_cap_points: Custom points for end cap (overrides end_cap).
     #[new]
@@ -157,7 +167,9 @@ pub struct PyOutlineStyle {
     /// The join style at corners.
     #[pyo3(get)]
     pub join: PyLineJoin,
-    /// Angle parameter for round/miter joins (radians).
+    /// Angle parameter for joins (radians).
+    /// - For Round joins: controls curve approximation (smaller = smoother).
+    /// - For Miter joins: minimum angle threshold; sharper corners fall back to bevel.
     #[pyo3(get)]
     pub join_angle: f64,
 }
@@ -172,7 +184,9 @@ impl PyOutlineStyle {
     ///     outer_offset: The outer offset distance (overrides offset if specified).
     ///     inner_offset: The inner offset distance (overrides offset if specified).
     ///     join: Join style at corners (default: Bevel).
-    ///     join_angle: Angle for round/miter joins in radians (default: ~0.314).
+    ///     join_angle: Angle parameter for joins in radians (default: ~0.314).
+    ///         For Round joins: smaller values = smoother curves.
+    ///         For Miter joins: minimum angle threshold; sharper corners use bevel instead.
     #[new]
     #[pyo3(signature = (offset=1.0, *, outer_offset=None, inner_offset=None, join=PyLineJoin::Bevel, join_angle=None))]
     fn new(

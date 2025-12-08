@@ -212,6 +212,16 @@ iOverlay should detect when holes share 2+ vertices and split the polygon
 at those points into multiple valid polygons, similar to how Shapely/GEOS
 handles this case.
 
+### Potential Implementation
+
+iOverlay already has a `ContourDecomposition` trait in `core::divide` that can split
+self-intersecting contours at their crossing points. This could potentially be applied
+to the exterior boundary of polygons with problematic hole configurations.
+
+When holes share 2+ vertices, the polygon's "effective boundary" (exterior minus holes)
+has self-touching points. Applying contour decomposition logic to detect and split at
+these points would produce multiple valid polygons.
+
 ## Impact
 
 Users passing iOverlay results to OGC-compliant systems will experience:
