@@ -1,0 +1,84 @@
+schema_version: 1
+
+package:
+  name: i_overlay
+  # Version is automatically extracted from Cargo.toml
+  version: ${{ load_from_file("../Cargo.toml").package.version }}
+
+source:
+  # For local builds, use the parent directory
+  path: ..
+  # Respect .gitignore to exclude target/, output/, etc.
+  use_gitignore: true
+
+build:
+  number: 0
+  # Build script for maturin
+  script:
+    # Generate type stubs before building the wheel
+    # Set PYO3_PYTHON to use Python from host environment (not build environment)
+    - PYO3_PYTHON=$PREFIX/bin/python cargo run --bin stub_gen
+    - python -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  build:
+    # C compiler for potential C dependencies
+    - ${{ compiler('c') }}
+    # Rust compiler from conda-forge
+    - ${{ compiler('rust') }}
+
+  host:
+    # Python interpreter
+    - python
+    - pip
+    # Maturin build backend
+    - maturin >=1.0,<2.0
+
+  run:
+    # Python runtime
+    - python
+
+tests:
+  - python:
+      imports:
+        - i_overlay
+      pip_check: false
+  - script:
+      - python -c "from i_overlay import FillRule, OverlayRule, ContourDirection"
+      - python -c "from i_overlay import ShapeType, Strategy, LineCap, LineJoin"
+      - python -c "import i_overlay; print('Version:', i_overlay.__version__)"
+  - script:
+      # Run pytest but skip stubtest (run separately with mypy)
+      - pytest tests -v --tb=short --ignore=tests/test_stubtest.py
+    requirements:
+      run:
+        - pytest
+    files:
+      source:
+        - tests
+        - Cargo.toml
+  - script:
+      # stubtest verifies the installed package's stubs match runtime
+      # The .pyi file is generated during build and installed with the package
+      - python -m mypy.stubtest i_overlay --allowlist stubtest_allowlist.txt
+    requirements:
+      run:
+        - mypy
+    files:
+      source:
+        - stubtest_allowlist.txt
+
+about:
+  homepage: https://github.com/bretttully/iOverlay-py
+  license: MIT
+  license_file: LICENSE
+  summary: Python bindings for iOverlay - Boolean Operations for 2D Polygons
+  description: |
+    i_overlay provides Python bindings for the iOverlay Rust library,
+    enabling boolean operations (union, intersection, difference, xor)
+    on 2D polygons with high performance and precision.
+  repository: https://github.com/bretttully/iOverlay-py
+
+extra:
+  recipe-maintainers:
+    - bretttully
