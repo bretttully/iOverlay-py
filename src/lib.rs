@@ -10,9 +10,12 @@ mod clip;
 mod clip_ops;
 mod enums;
 mod options;
+mod outline;
 mod overlay;
 mod simplify;
 mod slice;
+mod stroke;
+mod style;
 mod types;
 
 pub use clip::PyClipRule;
@@ -27,6 +30,8 @@ pub use options::PyOverlayOptions;
 pub use options::PyPrecision;
 pub use options::PySolver;
 pub use overlay::PyFloatOverlayGraph;
+pub use style::PyOutlineStyle;
+pub use style::PyStrokeStyle;
 
 /// i_overlay - Python bindings for iOverlay boolean operations on 2D polygons
 ///
@@ -60,6 +65,8 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySolver>()?;
     m.add_class::<PyOverlayOptions>()?;
     m.add_class::<PyClipRule>()?;
+    m.add_class::<style::PyStrokeStyle>()?;
+    m.add_class::<style::PyOutlineStyle>()?;
 
     // Register overlay classes and functions
     m.add_class::<PyFloatOverlayGraph>()?;
@@ -69,6 +76,10 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(simplify::simplify_shape, m)?)?;
     m.add_function(wrap_pyfunction!(slice::slice_by, m)?)?;
     m.add_function(wrap_pyfunction!(clip_ops::clip_by, m)?)?;
+
+    // Register stroke and outline functions
+    m.add_function(wrap_pyfunction!(stroke::stroke, m)?)?;
+    m.add_function(wrap_pyfunction!(outline::outline, m)?)?;
 
     // Add version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
