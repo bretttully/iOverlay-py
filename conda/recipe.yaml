@@ -54,6 +54,8 @@ tests:
       run:
         - pytest
         - shapely
+        - pandas
+        - numpy
     files:
       source:
         - tests

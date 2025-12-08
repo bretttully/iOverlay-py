@@ -55,6 +55,8 @@ pub struct PyStrokeStyle {
 impl PyStrokeStyle {
     /// Create a new StrokeStyle with the given width.
     ///
+    /// Note: The underlying Rust library clamps negative widths to 0.
+    ///
     /// Args:
     ///     width: The stroke width.
     ///     start_cap: Cap style at the start (default: Butt).
@@ -78,7 +80,7 @@ impl PyStrokeStyle {
         end_cap_points: Option<Vec<(f64, f64)>>,
     ) -> Self {
         Self {
-            width: width.max(0.0),
+            width,
             start_cap,
             end_cap,
             join,

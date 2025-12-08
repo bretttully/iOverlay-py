@@ -6,23 +6,11 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use pyo3_stub_gen::derive::gen_stub_pyfunction;
 
-use i_overlay_core::float::overlay::OverlayOptions;
 use i_overlay_core::mesh::outline::offset::OutlineOffset;
 
-use crate::options::PyOverlayOptions;
+use crate::options::{build_overlay_options, PyOverlayOptions};
 use crate::style::PyOutlineStyle;
 use crate::types::{extract_shapes, shapes_to_python, Shapes};
-
-/// Build Rust OverlayOptions from Python options.
-fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f64> {
-    OverlayOptions {
-        preserve_input_collinear: py_options.preserve_input_collinear,
-        output_direction: py_options.output_direction.into(),
-        preserve_output_collinear: py_options.preserve_output_collinear,
-        min_output_area: py_options.min_output_area as f64,
-        clean_result: true,
-    }
-}
 
 /// Create offset outline shapes from shapes.
 ///
@@ -36,6 +24,7 @@ fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f64> {
 ///
 /// Returns:
 ///     Outlined shapes as `list[list[list[tuple[float, float]]]]`.
+///     Returns an empty list if the input shapes are empty.
 ///
 /// Example:
 ///     ```python
