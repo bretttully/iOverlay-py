@@ -1,0 +1,38 @@
+[package]
+name = "i_overlay_py"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+description = "Python bindings for iOverlay: Boolean Operations for 2D Polygons"
+repository = "https://github.com/bretttully/iOverlay-py"
+
+[lib]
+# The Python module must be named "i_overlay" for the cdylib
+name = "i_overlay"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "stub_gen"
+path = "src/bin/stub_gen.rs"
+
+[features]
+default = []
+# extension-module: Only enable for cdylib Python extension, NOT for stub_gen binary
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+# iOverlay geometry library - alias to avoid name conflict with lib.name = "i_overlay"
+i_overlay_core = { package = "i_overlay", version = "4.1" }
+i_float = "1.15"
+i_shape = "1.14"
+
+[dependencies.pyo3]
+version = "0.27"
+# Note: extension-module is NOT included here - it's enabled via optional feature
+features = ["abi3-py313"]
+
+[dependencies.pyo3-stub-gen]
+version = "0.17"
+
+[build-dependencies]
+pyo3-build-config = "0.27"
