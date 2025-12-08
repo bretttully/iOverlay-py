@@ -10,6 +10,8 @@ mod clip;
 mod enums;
 mod options;
 mod overlay;
+mod simplify;
+mod slice;
 mod types;
 
 pub use clip::PyClipRule;
@@ -61,6 +63,10 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register overlay classes and functions
     m.add_class::<PyFloatOverlayGraph>()?;
     m.add_function(wrap_pyfunction!(overlay::overlay, m)?)?;
+
+    // Register simplify and slice functions
+    m.add_function(wrap_pyfunction!(simplify::simplify_shape, m)?)?;
+    m.add_function(wrap_pyfunction!(slice::slice_by, m)?)?;
 
     // Add version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
