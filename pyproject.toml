@@ -30,19 +30,8 @@ Homepage = "https://github.com/bretttully/iOverlay-py"
 Repository = "https://github.com/bretttully/iOverlay-py"
 
 [tool.maturin]
-# Build for stable ABI (abi3) for compatibility across Python versions
-compatibility = "linux"
 # Enable extension-module feature for Python extension builds
 features = ["extension-module"]
-
-# Support building for multiple Python versions with abi3
-[tool.maturin.target.x86_64-unknown-linux-gnu]
-rustflags = []
-
-[tool.cibuildwheel]
-# Build for Python 3.13 (including free-threaded)
-build = ["cp313-*", "cp313t-*"]
-skip = ["*-musllinux*"]
 
 [tool.ruff]
 line-length = 120

@@ -2,7 +2,8 @@
 
 Usage:
     python -m tests._fuzzer --runs 1000 --workers 8
-    python -m tests._fuzzer --seed 12345  # Reproduce a specific seed
+    python -m tests._fuzzer --generator spots --seed 12  # Reproduce and save JSON
+    python -m tests._fuzzer --generator spots --seed 12 --output-dir docs  # Save to docs/
     python -m tests._fuzzer --generator spots --runs 100
     python -m tests._fuzzer --test-rust fuzzer_failures/fuzzer-spots-12.json
 """
@@ -38,8 +39,23 @@ GENERATORS = {
 }
 
 
-def reproduce_seed(generator_name: str, seed: int, verbose: bool = True) -> int:
-    """Reproduce a specific seed for debugging."""
+def reproduce_seed(
+    generator_name: str,
+    seed: int,
+    output_dir: Path,
+    verbose: bool = True,
+) -> int:
+    """Reproduce a specific seed for debugging.
+
+    Args:
+        generator_name: Name of the generator to use.
+        seed: The seed to reproduce.
+        output_dir: Directory to save the failure report JSON.
+        verbose: Whether to print detailed output.
+
+    Returns:
+        0 if all tests pass, 1 if there are errors.
+    """
     generator_cls = GENERATORS.get(generator_name)
     if generator_cls is None:
         print(f"Unknown generator: {generator_name}", file=sys.stderr)
@@ -65,6 +81,10 @@ def reproduce_seed(generator_name: str, seed: int, verbose: bool = True) -> int:
     print(f"Found {len(errors)} errors:")
     for _, row in errors.iterrows():
         print(f"  {row['function']}: {row['error']}")
+
+    # Save failure report JSON
+    filepath = save_failure_report(generator, seed, errors, output_dir)
+    print(f"\nSaved failure report: {filepath}")
 
     print()
     print("--- Generated Test Case ---")
@@ -181,7 +201,7 @@ def main() -> int:
         if args.generator == "all":
             print("Error: --seed requires a specific --generator", file=sys.stderr)
             return 1
-        return reproduce_seed(args.generator, args.seed, verbose=not args.quiet)
+        return reproduce_seed(args.generator, args.seed, args.output_dir, verbose=not args.quiet)
 
     # Run full fuzzer
     return _run_full_fuzzer(args)

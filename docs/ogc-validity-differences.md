@@ -1,132 +1,241 @@
-# OGC Validity Differences in iOverlay Results
+# OGC Validity Issue in iOverlay Results
 
-This document explains an important difference between the geometric output of iOverlay
-and the OGC Simple Feature Specification (SFS) that libraries like Shapely use for validation.
+This document describes an issue where iOverlay produces geometries that violate
+OGC Simple Feature Specification validity rules. This is a reproducible bug report
+intended for the iOverlay maintainers.
 
-## The Issue
+## Summary
 
-When running fuzzer tests against the i_overlay library, certain operations produce geometries
-that Shapely reports as invalid with errors like:
+When performing certain boolean operations (particularly XOR), iOverlay produces
+polygons where interior holes share two or more vertices. This creates geometries
+with disconnected interiors, violating the OGC requirement that polygon interiors
+must be connected point sets.
+
+**Key finding**: Shapely/GEOS produces OGC-valid output for the same operation,
+proving that valid output is achievable.
+
+## Reproducing the Issue
+
+### Step 1: Generate the test case
+
+```bash
+# From the pyOverlay repository root:
+python -m tests._fuzzer --generator spots --seed 12 --output-dir docs
+```
+
+This creates `docs/fuzzer-spots-12.json` containing the subject and clip shapes.
+
+### Step 2: Run the analysis script
+
+```bash
+python docs/analyze_validity.py
+```
+
+This script:
+1. Loads the test case from JSON
+2. Performs XOR with both iOverlay and Shapely
+3. Compares validity and structure of results
+4. Generates visualization images
+
+## Results Comparison
+
+| Metric | iOverlay | Shapely |
+|--------|----------|---------|
+| Operation | XOR (EvenOdd) | symmetric_difference |
+| Output polygons | 35 | 38 |
+| Invalid polygons | 1 | 0 |
+| Total area | 1305.275954 | 1305.275954 |
+
+Both produce the same total area, but iOverlay has one invalid polygon while
+Shapely produces all valid polygons.
+
+## The Invalid Polygon
+
+iOverlay's polygon at index 2 has:
+- 97 exterior points
+- 5 holes
+- Area: 334.085478
+
+The validity issue: **Interior is disconnected**
+
+### Holes Sharing Vertices
+
+The invalid polygon has three pairs of holes that share 2 vertices each:
+
+| Holes | Shared Points |
+|-------|---------------|
+| 0 and 1 | (4.352207, 41.042783), (4.648858, 41.347902) |
+| 0 and 3 | (8.906744, 34.676220), (11.254274, 36.706401) |
+| 2 and 3 | (7.663793, 31.262938), (8.419574, 30.768476) |
+
+When two holes share 2+ vertices, they create a "corridor" that disconnects
+the polygon's interior.
+
+## OGC Specification Reference
+
+The OGC Simple Feature Specification (ISO 19125-1) states:
+
+> "The interior of every Surface is a connected point set."
+
+This is not an arbitrary "stricter definition" - it's a fundamental topological
+requirement for polygon validity. A polygon with disconnected interior cannot
+be properly processed by most GIS operations.
+
+### Valid vs Invalid Hole Configurations
 
 ```
-Invalid geometry: Interior is disconnected[4.64885824918747 41.3479019403458]
+VALID: Holes touching at ONE point (tangent)
+┌─────────────┐
+│  ┌───┐      │
+│  │   │      │
+│  └───●───┐  │   ● = single touch point
+│      │   │  │
+│      └───┘  │
+└─────────────┘
+
+INVALID: Holes touching at TWO points (disconnects interior)
+┌─────────────┐
+│  ┌───●───┐  │
+│  │       │  │   The interior between the
+│  │       │  │   two ● points is disconnected
+│  └───●───┘  │   from the rest of the polygon
+└─────────────┘
 ```
 
-However, testing the same inputs directly against the raw Rust i_overlay implementation
-shows that **all operations succeed**. This raises the question: is this a bug in the
-bindings, in the upstream library, or something else entirely?
+## Visual Comparison
 
-## Root Cause Analysis
+### Overview
+![Comparison Overview](comparison_overview.png)
 
-The "invalid" geometries are **mathematically correct** results of the boolean operations.
-The issue is that they violate OGC's stricter definition of polygon validity.
+### iOverlay vs Shapely Results
+![iOverlay vs Shapely](ioverlay_vs_shapely.png)
 
-### Example: Touching Holes
+### Invalid Polygon Detail
+![Invalid Polygon Detail](invalid_polygon_detail.png)
 
-Consider a polygon with multiple holes. After a boolean XOR operation, two holes may share
-exactly two vertices:
+## Python Code to Reproduce
 
-![Shape 2 with touching holes](holes_touching.png)
+```python
+import json
+from shapely.geometry import Polygon, MultiPolygon
+from shapely.validation import explain_validity
+from i_overlay import FillRule, OverlayRule, overlay
 
-In this example:
-- **Hole 0** (red) and **Hole 1** (green) share exactly two vertices
-- The touching points are at:
-  - `(4.352206826210022, 41.04278254508972)`
-  - `(4.64885824918747, 41.347901940345764)` (the reported problem point)
+# Load test case
+with open("docs/fuzzer-spots-12.json") as f:
+    data = json.load(f)
 
-### Why This Violates OGC
+def convert_shapes(shapes):
+    """Convert JSON lists to tuples for i_overlay."""
+    return [[[tuple(pt) for pt in contour] for contour in shape] for shape in shapes]
 
-The OGC Simple Feature Specification requires that:
+def shapes_to_shapely(shapes):
+    """Convert i_overlay shapes to Shapely MultiPolygon."""
+    polygons = []
+    for shape in shapes:
+        if not shape:
+            continue
+        exterior = list(shape[0])
+        if exterior[0] != exterior[-1]:
+            exterior = exterior + [exterior[0]]
+        holes = []
+        for hole in shape[1:]:
+            if len(hole) >= 3:
+                h = list(hole) if hole[0] == hole[-1] else list(hole) + [hole[0]]
+                holes.append(h)
+        try:
+            poly = Polygon(exterior, holes or None)
+            if not poly.is_empty:
+                polygons.append(poly)
+        except Exception:
+            pass
+    return MultiPolygon(polygons) if polygons else MultiPolygon()
 
-1. **Polygon interiors must be connected** - you should be able to travel between any two
-   points in the interior without crossing a boundary
-2. **Holes can only touch the exterior or other holes at a single point** - touching at
-   two or more points creates a "pinched" configuration
+subject = convert_shapes(data["subject"])
+clip = convert_shapes(data["clip"])
 
-When two holes share two vertices, they create a narrow corridor between them that
-effectively "pinches" the polygon's interior, making it topologically disconnected.
+# iOverlay XOR
+ioverlay_result = overlay(subject, clip, OverlayRule.Xor, FillRule.EvenOdd)
+ioverlay_mp = shapes_to_shapely(ioverlay_result)
 
-### The Full Picture
+# Shapely XOR
+subject_mp = shapes_to_shapely(subject)
+clip_mp = shapes_to_shapely(clip)
+shapely_result = subject_mp.symmetric_difference(clip_mp)
 
-Looking at the full shape helps understand the geometry:
+# Compare
+print(f"iOverlay: {len(ioverlay_mp.geoms)} polygons, valid={ioverlay_mp.is_valid}")
+print(f"Shapely:  {len(shapely_result.geoms)} polygons, valid={shapely_result.is_valid}")
+print(f"Area difference: {abs(ioverlay_mp.area - shapely_result.area):.10f}")
 
-![Full shape 2 analysis](shape2_analysis.png)
+if not ioverlay_mp.is_valid:
+    print(f"iOverlay validity issue: {explain_validity(ioverlay_mp)}")
 
-The polygon has:
-- 96 points in the exterior ring
-- 5 holes with varying complexity
-- Multiple pairs of holes that touch at exactly 2 points
+# Find the invalid polygon
+for i, poly in enumerate(ioverlay_mp.geoms):
+    if not poly.is_valid:
+        print(f"\nInvalid polygon {i}: {len(poly.interiors)} holes")
 
-## Why This Happens
+        # Check for shared vertices between holes
+        for j, hole1 in enumerate(poly.interiors):
+            for k, hole2 in enumerate(poly.interiors):
+                if j >= k:
+                    continue
+                h1 = set(tuple(round(c, 10) for c in pt) for pt in hole1.coords)
+                h2 = set(tuple(round(c, 10) for c in pt) for pt in hole2.coords)
+                shared = h1 & h2
+                if len(shared) >= 2:
+                    print(f"  Holes {j} and {k} share {len(shared)} vertices!")
+```
 
-iOverlay computes boolean operations using an algorithm that produces geometrically
-correct results. However, it does not enforce OGC's stricter topological constraints
-about how holes may interact.
+## Expected Behavior
 
-This is a **design choice**, not a bug:
-- The mathematical result is correct
-- The total area is preserved
-- All points are in the correct locations
+Shapely/GEOS handles this case by splitting the polygon at the pinch points,
+producing multiple valid polygons instead of one invalid polygon:
 
-## Implications for Users
+- iOverlay: 1 polygon with 5 holes (invalid)
+- Shapely equivalent: 4 polygons with 0-2 holes each (all valid)
 
-### When This Matters
+The total area is preserved in both cases.
 
-If you're using the results with:
-- **Shapely** - geometries may be flagged as invalid
-- **PostGIS** - ST_IsValid will return false
-- **GEOS** - validity checks will fail
-- **GeoJSON validators** - strict validators may reject the output
+## Suggested Fix
 
-### When This Doesn't Matter
+iOverlay should detect when holes share 2+ vertices and split the polygon
+at those points into multiple valid polygons, similar to how Shapely/GEOS
+handles this case.
 
-If you're using the results for:
-- **Rendering** - the shapes will display correctly
-- **Area calculations** - the area is mathematically correct
-- **Further boolean operations in iOverlay** - will work fine
-- **Non-OGC systems** - many systems don't enforce these constraints
+## Impact
 
-## Workarounds
+Users passing iOverlay results to OGC-compliant systems will experience:
+- PostGIS: `ST_IsValid()` returns false
+- Shapely: Various operations may fail or produce incorrect results
+- QGIS: Geometry validation errors
+- GeoJSON validators: Rejection of output
 
-### Using Shapely's make_valid
+## Workaround
+
+Until this is fixed in iOverlay, users can apply Shapely's `make_valid()`:
 
 ```python
 from shapely.validation import make_valid
 
-# Result from iOverlay
 result = overlay(subject, clip, OverlayRule.Xor, FillRule.EvenOdd)
+result_mp = shapes_to_shapely(result)
 
-# Convert to Shapely
-multi = shapes_to_shapely(result)
-
-# If invalid, make it valid
-if not multi.is_valid:
-    multi = make_valid(multi)  # Splits into multiple polygons
+if not result_mp.is_valid:
+    result_mp = make_valid(result_mp)  # Splits into valid polygons
 ```
 
-The `make_valid` function will:
-- Split the polygon at the touching points
-- Return a `MultiPolygon` with multiple valid polygons
-- Preserve the total area
+## Environment
 
-In our example:
-- Original: 1 invalid polygon (area = 334.09)
-- After make_valid: 4 valid polygons (total area = 334.09)
+- iOverlay version: 4.1
+- Shapely version: 2.x (GEOS 3.x)
+- Python version: 3.13
 
-### Post-Processing in iOverlay
+## Files
 
-A potential future enhancement would be to add an option to split touching holes
-during the overlay operation itself.
-
-## Conclusion
-
-The differences between iOverlay's output and OGC validity are:
-
-1. **Not bugs** - the mathematical results are correct
-2. **Design decisions** - iOverlay prioritizes geometric correctness over OGC compliance
-3. **Manageable** - can be fixed with post-processing if OGC compliance is required
-
-When using this library, be aware that:
-- Results may need validation/repair for OGC-compliant systems
-- The raw results are geometrically sound
-- The Rust implementation produces identical results (this is not a Python binding issue)
+- `fuzzer-spots-12.json` - Test case input data
+- `analyze_validity.py` - Analysis and visualization script
+- `comparison_overview.png` - Overview visualization
+- `ioverlay_vs_shapely.png` - Side-by-side comparison
+- `invalid_polygon_detail.png` - Detailed view of the invalid polygon
