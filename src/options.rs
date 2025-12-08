@@ -6,6 +6,7 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use crate::enums::{PyContourDirection, PyStrategy};
 use i_overlay_core::core::overlay::{ContourDirection, IntOverlayOptions};
 use i_overlay_core::core::solver::{MultithreadOptions, Precision, Solver, Strategy};
+use i_overlay_core::float::overlay::OverlayOptions;
 
 /// Precision level for the solver to determine tolerance for snapping to edge ends.
 ///
@@ -272,5 +273,16 @@ impl From<&PyOverlayOptions> for IntOverlayOptions {
             preserve_output_collinear: value.preserve_output_collinear,
             min_output_area: value.min_output_area,
         }
+    }
+}
+
+/// Build Rust OverlayOptions from Python options.
+pub fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f64> {
+    OverlayOptions {
+        preserve_input_collinear: py_options.preserve_input_collinear,
+        output_direction: py_options.output_direction.into(),
+        preserve_output_collinear: py_options.preserve_output_collinear,
+        min_output_area: py_options.min_output_area as f64,
+        clean_result: true,
     }
 }

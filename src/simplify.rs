@@ -9,22 +9,11 @@ use pyo3_stub_gen::derive::gen_stub_pyfunction;
 use i_overlay_core::core::fill_rule::FillRule;
 use i_overlay_core::core::overlay_rule::OverlayRule;
 use i_overlay_core::core::solver::Solver;
-use i_overlay_core::float::overlay::{FloatOverlay, OverlayOptions};
+use i_overlay_core::float::overlay::FloatOverlay;
 
 use crate::enums::PyFillRule;
-use crate::options::{PyOverlayOptions, PySolver};
+use crate::options::{build_overlay_options, PyOverlayOptions, PySolver};
 use crate::types::{extract_shapes, shapes_to_python, Shapes};
-
-/// Build Rust OverlayOptions from Python options.
-fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f64> {
-    OverlayOptions {
-        preserve_input_collinear: py_options.preserve_input_collinear,
-        output_direction: py_options.output_direction.into(),
-        preserve_output_collinear: py_options.preserve_output_collinear,
-        min_output_area: py_options.min_output_area as f64,
-        clean_result: true,
-    }
-}
 
 /// Build Rust Solver from Python solver.
 fn build_solver(py_solver: Option<&PySolver>) -> Solver {
