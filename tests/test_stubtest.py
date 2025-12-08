@@ -19,7 +19,8 @@ def test_stubtest() -> None:
             "--allowlist",
             str(allowlist),
         ],
-        check=False, capture_output=True,
+        check=False,
+        capture_output=True,
         text=True,
     )
 
