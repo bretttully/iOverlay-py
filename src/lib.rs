@@ -7,6 +7,7 @@ use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 
 mod clip;
+mod clip_ops;
 mod enums;
 mod options;
 mod overlay;
@@ -64,9 +65,10 @@ fn i_overlay(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFloatOverlayGraph>()?;
     m.add_function(wrap_pyfunction!(overlay::overlay, m)?)?;
 
-    // Register simplify and slice functions
+    // Register simplify, slice, and clip functions
     m.add_function(wrap_pyfunction!(simplify::simplify_shape, m)?)?;
     m.add_function(wrap_pyfunction!(slice::slice_by, m)?)?;
+    m.add_function(wrap_pyfunction!(clip_ops::clip_by, m)?)?;
 
     // Add version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
