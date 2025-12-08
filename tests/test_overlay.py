@@ -1,7 +1,6 @@
 """Tests for Boolean overlay operations."""
 
-from shapely import Polygon
-from shapely import box as shapely_box
+import shapely
 
 from i_overlay import (
     ContourDirection,
@@ -19,6 +18,7 @@ from .shapely_utils import (
     circle,
     geometry_to_shapes,
     polygon_with_hole,
+    shapes_to_multipolygon,
 )
 
 
@@ -32,11 +32,11 @@ class TestOverlayBasic:
         clip = box(1.0, 0.0, 2.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
         # Should produce a single 2x1 rectangle
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert len(result[0][0]) == 4
+        expected = shapely.box(0.0, 0.0, 2.0, 1.0)
+        assert result_geom.equals(expected)
 
     def test_overlay_intersection_overlapping_squares(self) -> None:
         """Test intersection of two overlapping squares."""
@@ -46,11 +46,11 @@ class TestOverlayBasic:
         clip = box(1.0, 1.0, 3.0, 3.0)
 
         result = overlay(subject, clip, OverlayRule.Intersect, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
         # Should produce a 1x1 square at (1,1)
-        assert len(result) == 1
-        assert len(result[0]) == 1
-        assert len(result[0][0]) == 4
+        expected = shapely.box(1.0, 1.0, 2.0, 2.0)
+        assert result_geom.equals(expected)
 
     def test_overlay_difference(self) -> None:
         """Test difference of two overlapping squares."""
@@ -60,9 +60,11 @@ class TestOverlayBasic:
         clip = box(1.0, 1.0, 2.0, 2.0)
 
         result = overlay(subject, clip, OverlayRule.Difference, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should produce an L-shaped result
-        assert len(result) == 1
+        # Should produce an L-shaped result with area = 4 - 1 = 3
+        expected = shapely.box(0.0, 0.0, 2.0, 2.0).difference(shapely.box(1.0, 1.0, 2.0, 2.0))
+        assert result_geom.equals(expected)
 
     def test_overlay_xor(self) -> None:
         """Test XOR of two overlapping squares."""
@@ -72,9 +74,11 @@ class TestOverlayBasic:
         clip = box(1.0, 1.0, 3.0, 3.0)
 
         result = overlay(subject, clip, OverlayRule.Xor, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should produce two separate shapes
-        assert len(result) >= 1
+        # Should produce XOR result
+        expected = shapely.box(0.0, 0.0, 2.0, 2.0).symmetric_difference(shapely.box(1.0, 1.0, 3.0, 3.0))
+        assert result_geom.equals(expected)
 
 
 class TestOverlayWithHoles:
@@ -91,9 +95,13 @@ class TestOverlayWithHoles:
         clip = box(1.5, 1.5, 2.5, 2.5)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should have a shape with a smaller hole
-        assert len(result) >= 1
+        # Build expected geometry: outer square with hole, union with small square
+        expected_subject = shapely.Polygon(outer, [hole])
+        expected_clip = shapely.box(1.5, 1.5, 2.5, 2.5)
+        expected = expected_subject.union(expected_clip)
+        assert result_geom.equals(expected)
 
     def test_intersection_removes_hole(self) -> None:
         """Test intersection that removes the hole entirely."""
@@ -102,14 +110,15 @@ class TestOverlayWithHoles:
         hole = [(1.0, 1.0), (3.0, 1.0), (3.0, 3.0), (1.0, 3.0)]
         subject = polygon_with_hole(outer, hole)
 
-        # 2x2 square that doesn't touch the hole
+        # 1x1 square that doesn't touch the hole
         clip = box(3.0, 0.0, 4.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Intersect, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should produce a solid shape without a hole
-        assert len(result) == 1
-        assert len(result[0]) == 1  # No holes
+        # Should produce a 1x1 square
+        expected = shapely.box(3.0, 0.0, 4.0, 1.0)
+        assert result_geom.equals(expected)
 
 
 class TestOverlayFillRules:
@@ -121,15 +130,17 @@ class TestOverlayFillRules:
         clip = box(0.5, 0.0, 1.5, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.NonZero)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) >= 1
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)
 
     def test_positive_fill_rule(self) -> None:
         """Test Positive fill rule."""
         # Clockwise winding for positive fill rule
-        polygon = Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+        polygon = shapely.Polygon([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
         subject = geometry_to_shapes(polygon)
-        polygon2 = Polygon([(0.5, 0.0), (1.5, 0.0), (1.5, 1.0), (0.5, 1.0)])
+        polygon2 = shapely.Polygon([(0.5, 0.0), (1.5, 0.0), (1.5, 1.0), (0.5, 1.0)])
         clip = geometry_to_shapes(polygon2)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.Positive)
@@ -164,8 +175,10 @@ class TestOverlayOptions:
         )
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, options=options)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) >= 1
+        expected = shapely.box(0.0, 0.0, 2.0, 1.0)
+        assert result_geom.equals(expected)
 
     def test_with_min_output_area(self) -> None:
         """Test that min_output_area filters small shapes."""
@@ -192,8 +205,10 @@ class TestOverlaySolver:
         solver = Solver(strategy=Strategy.List)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, solver=solver)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) >= 1
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)
 
     def test_with_tree_strategy(self) -> None:
         """Test overlay with Tree strategy."""
@@ -203,8 +218,10 @@ class TestOverlaySolver:
         solver = Solver(strategy=Strategy.Tree)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, solver=solver)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) >= 1
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)
 
     def test_with_custom_precision(self) -> None:
         """Test overlay with custom precision."""
@@ -215,17 +232,21 @@ class TestOverlaySolver:
         solver = Solver(strategy=Strategy.Auto, precision=precision, multithreading=False)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, solver=solver)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) >= 1
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)
 
     def test_with_preset_solvers(self) -> None:
         """Test overlay with preset solvers."""
         subject = box(0.0, 0.0, 1.0, 1.0)
         clip = box(0.5, 0.0, 1.5, 1.0)
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
 
         for solver in [Solver.AUTO, Solver.LIST, Solver.TREE, Solver.FRAG]:
             result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, solver=solver)
-            assert len(result) >= 1
+            result_geom = shapes_to_multipolygon(result)
+            assert result_geom.equals(expected)
 
 
 class TestOverlaySubjectOnly:
@@ -250,15 +271,17 @@ class TestOverlayMultipleShapes:
         """Test union of multiple shapes."""
         # Three squares in a row (subject has two, clip has one)
         subject = [
-            geometry_to_shapes(shapely_box(0.0, 0.0, 1.0, 1.0))[0],
-            geometry_to_shapes(shapely_box(1.0, 0.0, 2.0, 1.0))[0],
+            geometry_to_shapes(shapely.box(0.0, 0.0, 1.0, 1.0))[0],
+            geometry_to_shapes(shapely.box(1.0, 0.0, 2.0, 1.0))[0],
         ]
         clip = box(2.0, 0.0, 3.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
         # Should produce a single 3x1 rectangle
-        assert len(result) == 1
+        expected = shapely.box(0.0, 0.0, 3.0, 1.0)
+        assert result_geom.equals(expected)
 
     def test_intersection_no_overlap(self) -> None:
         """Test intersection when shapes don't overlap."""
@@ -266,9 +289,10 @@ class TestOverlayMultipleShapes:
         clip = box(5.0, 0.0, 6.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Intersect, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # No intersection, should return empty
-        assert len(result) == 0
+        # No intersection, should be empty
+        assert result_geom.is_empty
 
 
 class TestOverlayEdgeCases:
@@ -280,9 +304,11 @@ class TestOverlayEdgeCases:
         clip = box(0.0, 0.0, 1.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
         # Clip should pass through
-        assert len(result) == 1
+        expected = shapely.box(0.0, 0.0, 1.0, 1.0)
+        assert result_geom.equals(expected)
 
     def test_empty_clip(self) -> None:
         """Test with empty clip."""
@@ -290,9 +316,11 @@ class TestOverlayEdgeCases:
         clip: list[list[list[tuple[float, float]]]] = []
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
         # Subject should pass through
-        assert len(result) == 1
+        expected = shapely.box(0.0, 0.0, 1.0, 1.0)
+        assert result_geom.equals(expected)
 
     def test_both_empty(self) -> None:
         """Test with both subject and clip empty."""
@@ -300,12 +328,14 @@ class TestOverlayEdgeCases:
         clip: list[list[list[tuple[float, float]]]] = []
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        assert len(result) == 0
+        assert result_geom.is_empty
 
     def test_identical_shapes(self) -> None:
         """Test operations on identical shapes."""
         shape = box(0.0, 0.0, 1.0, 1.0)
+        expected = shapely.box(0.0, 0.0, 1.0, 1.0)
 
         union_result = overlay(shape, shape, OverlayRule.Union, FillRule.EvenOdd)
         intersect_result = overlay(shape, shape, OverlayRule.Intersect, FillRule.EvenOdd)
@@ -313,11 +343,11 @@ class TestOverlayEdgeCases:
         xor_result = overlay(shape, shape, OverlayRule.Xor, FillRule.EvenOdd)
 
         # Union and intersection should return the original shape
-        assert len(union_result) == 1
-        assert len(intersect_result) == 1
+        assert shapes_to_multipolygon(union_result).equals(expected)
+        assert shapes_to_multipolygon(intersect_result).equals(expected)
         # Difference and XOR should return empty
-        assert len(diff_result) == 0
-        assert len(xor_result) == 0
+        assert shapes_to_multipolygon(diff_result).is_empty
+        assert shapes_to_multipolygon(xor_result).is_empty
 
 
 class TestOverlayResultFormat:
@@ -356,9 +386,14 @@ class TestOverlayWithCircles:
         clip = circle(1.0, 0.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should produce a single merged shape
-        assert len(result) == 1
+        # Build expected union using shapely
+        expected = shapely.Point(0.0, 0.0).buffer(1.0, 32).union(shapely.Point(1.0, 0.0).buffer(1.0, 32))
+        # Compare normalized geometries (same area, similar shape)
+        assert abs(result_geom.area - expected.area) < 1e-6
+        # Verify the symmetric difference is negligible (shapes are equivalent)
+        assert result_geom.symmetric_difference(expected).area < 1e-6
 
     def test_intersection_circles(self) -> None:
         """Test intersection of two overlapping circles."""
@@ -366,6 +401,11 @@ class TestOverlayWithCircles:
         clip = circle(1.0, 0.0, 1.0)
 
         result = overlay(subject, clip, OverlayRule.Intersect, FillRule.EvenOdd)
+        result_geom = shapes_to_multipolygon(result)
 
-        # Should produce a lens-shaped intersection
-        assert len(result) == 1
+        # Build expected intersection using shapely
+        expected = shapely.Point(0.0, 0.0).buffer(1.0, 32).intersection(shapely.Point(1.0, 0.0).buffer(1.0, 32))
+        # Compare normalized geometries (same area, similar shape)
+        assert abs(result_geom.area - expected.area) < 1e-6
+        # Verify the symmetric difference is negligible (shapes are equivalent)
+        assert result_geom.symmetric_difference(expected).area < 1e-6
