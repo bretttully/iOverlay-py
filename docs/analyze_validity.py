@@ -237,9 +237,7 @@ def generate_detail_figure(script_dir: Path, invalid_poly: Polygon, shapely_resu
     ax2.set_xlim(bounds[0] - padding, bounds[2] + padding)
     ax2.set_ylim(bounds[1] - padding, bounds[3] + padding)
 
-    search_box = box(
-        bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding
-    )
+    search_box = box(bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding)
 
     matching_polys = [p for p in shapely_result.geoms if p.intersects(search_box)]
     ax2.set_title(f"Shapely: Same region split into {len(matching_polys)} valid polygons")
