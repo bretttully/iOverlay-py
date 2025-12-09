@@ -9,6 +9,7 @@ See docs/ogc-validity-differences.md for detailed analysis.
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
 import pytest
 import shapely
 from shapely.validation import explain_validity
@@ -115,7 +116,117 @@ SINGLE_HOLE_CASE = OGCValidityTestCase(
         ]
     ),
     expected_area=10.0,  # 16 (box) - 6 (combined holes)
-    xfail=False,  # This case currently passes (geometry may not trigger the bug)
+    xfail=False,
+)
+
+
+def create_checkerboard(level: int):
+    base_sz = 7
+    sz = base_sz ** (level + 1)
+    exterior = shapely.box(0, 0, sz, sz)
+
+    def interiors(ilevel: int):
+        szi = base_sz**ilevel
+        return [
+            *(shapely.box(i * szi, i * szi, (i + 1) * szi, (i + 1) * szi) for i in range(1, 6)),
+            *(shapely.box(i * szi, (i + 2) * szi, (i + 1) * szi, (i + 3) * szi) for i in range(1, 4)),
+            *(shapely.box(i * szi, (i + 4) * szi, (i + 1) * szi, (i + 5) * szi) for i in range(1, 2)),
+            *(shapely.box((i + 2) * szi, i * szi, (i + 3) * szi, (i + 1) * szi) for i in range(1, 4)),
+            *(shapely.box((i + 4) * szi, i * szi, (i + 5) * szi, (i + 1) * szi) for i in range(1, 2)),
+        ]
+
+    holes = []
+    for ilevel in range(level + 1):
+        holes.extend(interiors(ilevel))
+        if ilevel < level:
+            offset = base_sz ** (ilevel + 1)
+            holes = [shapely.transform(h, lambda p, o=offset: p + np.array([2 * o, 3 * o])) for h in holes]
+
+    interior = shapely.unary_union(holes)
+    expected_area = exterior.area - interior.area
+    return {"exterior": exterior, "interior": interior, "expected_area": expected_area}
+
+
+CHECKERBOARD_LVL0_CASE = OGCValidityTestCase(
+    id="checkerboard_level_0",
+    description="""
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=0),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+
+CHECKERBOARD_LVL1_CASE = OGCValidityTestCase(
+    id="checkerboard_level_1",
+    description="""
+    A single level nested version of the checkerboard pattern where holes share vertices and the sub-checkerboard
+    is itself the level 0 checkerboard and located at (14,21):
+
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=1),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+
+CHECKERBOARD_LVL2_CASE = OGCValidityTestCase(
+    id="checkerboard_level_2",
+    description="""
+    A two-level nested version of the checkerboard pattern where holes share vertices and the sub-checkerboards
+    are themselves the level 1 checkerboard located at (98,147):
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=2),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
 )
 
 
@@ -132,7 +243,13 @@ class TestOGCValidity:
 
     @pytest.mark.parametrize(
         "case",
-        [TWO_HOLES_CASE.pytest_param(), SINGLE_HOLE_CASE.pytest_param()],
+        [
+            TWO_HOLES_CASE.pytest_param(),
+            SINGLE_HOLE_CASE.pytest_param(),
+            CHECKERBOARD_LVL0_CASE.pytest_param(),
+            CHECKERBOARD_LVL1_CASE.pytest_param(),
+            CHECKERBOARD_LVL2_CASE.pytest_param(),
+        ],
     )
     def test_ioverlay_vs_shapely_validity(self, case: OGCValidityTestCase) -> None:
         """Compare iOverlay and Shapely results for difference operations.
