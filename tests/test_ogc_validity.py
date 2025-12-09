@@ -6,6 +6,10 @@ violate OGC Simple Feature Specification validity rules.
 See docs/ogc-validity-differences.md for detailed analysis.
 """
 
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
 import pytest
 import shapely
 from shapely.validation import explain_validity
@@ -14,12 +18,9 @@ from i_overlay import FillRule, OverlayRule, overlay
 
 from .shapely_utils import Shapes, geometry_to_shapes
 
-# Expected area: 25 (box) - 3 (top_l) - 3 (bottom_l) = 19
-EXPECTED_AREA = 19.0
-
 
 def shapes_to_multipolygon_unchecked(shapes: Shapes) -> shapely.MultiPolygon:
-    """Convert i_overlay shapes to Shapely shapely.MultiPolygon without validity filtering.
+    """Convert i_overlay shapes to Shapely MultiPolygon without validity filtering.
 
     Unlike the standard shapes_to_multipolygon, this does NOT filter out invalid
     polygons, allowing us to detect OGC validity issues.
@@ -39,149 +40,243 @@ def shapes_to_multipolygon_unchecked(shapes: Shapes) -> shapely.MultiPolygon:
     return shapely.MultiPolygon(polygons) if polygons else shapely.MultiPolygon()
 
 
-@pytest.fixture
-def box_shapely() -> shapely.Polygon:
-    """5x5 box polygon."""
-    return shapely.box(0, 0, 5, 5)
+@dataclass
+class OGCValidityTestCase:
+    """Test case for OGC validity issues."""
+
+    id: str
+    description: str
+    exterior: shapely.Polygon
+    interior: shapely.Polygon
+    expected_area: float
+    xfail: bool = False
+    xfail_reason: str = ""
+
+    def pytest_param(self) -> Any:
+        """Return a pytest.param with appropriate markers."""
+        marks = []
+        if self.xfail:
+            marks.append(pytest.mark.xfail(reason=self.xfail_reason))
+        return pytest.param(self, id=self.id, marks=marks)
 
 
-@pytest.fixture
-def top_l_shapely() -> shapely.Polygon:
-    """Top-left L-shaped hole (area=3).
-
-    Covers cells: (1,2)-(2,3), (1,3)-(2,4), (2,3)-(3,4)
-    """
-    return shapely.union_all(
-        [
-            shapely.box(1, 3, 2, 4),  # top-left cell
-            shapely.box(2, 3, 3, 4),  # top-right cell
-            shapely.box(1, 2, 2, 3),  # bottom cell
-        ]
-    )
-
-
-@pytest.fixture
-def bottom_l_shapely() -> shapely.Polygon:
-    """Bottom-right L-shaped hole (area=3).
-
-    Covers cells: (3,2)-(4,3), (2,1)-(3,2), (3,1)-(4,2)
-    """
-    return shapely.union_all(
-        [
-            shapely.box(3, 2, 4, 3),  # top cell
-            shapely.box(2, 1, 3, 2),  # bottom-left cell
-            shapely.box(3, 1, 4, 2),  # bottom-right cell
-        ]
-    )
-
-
-@pytest.fixture
-def box_shapes(box_shapely: shapely.Polygon) -> Shapes:
-    """5x5 box as i_overlay Shapes."""
-    return geometry_to_shapes(box_shapely)
-
-
-@pytest.fixture
-def top_l_shapes(top_l_shapely: shapely.Polygon) -> Shapes:
-    """Top-left L-shaped hole as i_overlay Shapes."""
-    return geometry_to_shapes(top_l_shapely)
-
-
-@pytest.fixture
-def bottom_l_shapes(bottom_l_shapely: shapely.Polygon) -> Shapes:
-    """Bottom-right L-shaped hole as i_overlay Shapes."""
-    return geometry_to_shapes(bottom_l_shapely)
-
-
-class TestOGCValidityKnownIssues:
-    """Tests documenting known OGC validity issues in iOverlay.
-
-    These tests are marked as xfail because they document bugs in the upstream
-    iOverlay library. When iOverlay fixes these issues, the tests should pass.
-
-    Diagram of the test geometry:
+TWO_HOLES_CASE = OGCValidityTestCase(
+    id="two_holes_sharing_vertices",
+    description="""
+    Two L-shaped holes share vertices at (2,2) and (3,3):
         0   1   2   3   4   5
       5 ┌───────────────────┐
         │                   │
       4 │   ┌───────┐       │
-        │   │ ░   ░ │       │   Two L-shaped holes share vertices ● at (2,2) and (3,3)
+        │   │ ░   ░ │       │
       3 │   │   ┌───●───┐   │
         │   │ ░ │   │ ░ │   │   ░ = holes
       2 │   └───●───┘   │   │
-        │       │ ░   ░ │   │   The shared diagonal edge disconnects the interior
+        │       │ ░   ░ │   │
       1 │       └───────┘   │
         │                   │
       0 └───────────────────┘
+    """,
+    exterior=shapely.box(0, 0, 5, 5),
+    interior=shapely.union_all(
+        [
+            shapely.box(1, 2, 2, 4),
+            shapely.box(2, 3, 3, 4),
+            shapely.box(2, 1, 4, 2),
+            shapely.box(3, 2, 4, 3),
+        ]
+    ),
+    expected_area=19.0,  # 25 (box) - 3 (top_l) - 3 (bottom_l)
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+SINGLE_HOLE_CASE = OGCValidityTestCase(
+    id="single_hole_sharing_vertices",
+    description="""
+    Single combined hole shares vertices at (2,2) and (2,3):
+        0   1   2   3   4
+      4         ┌───────┐
+                │       │
+      3     ┌───●───┐   │
+            │   │ ░ │   │   Single L-shaped hole shares vertices ● at (2,2) and (2,3)
+      2 ┌───●───┘   │   │
+        │   │ ░   ░ │   │   ░ = hole
+      1 │   └───────┘   │
+        │               │
+      0 └───────────────┘
+    """,
+    exterior=shapely.box(0, 0, 4, 4),
+    interior=shapely.union_all(
+        [
+            shapely.box(0, 2, 1, 4),
+            shapely.box(1, 3, 2, 4),
+            shapely.box(1, 1, 3, 2),
+            shapely.box(2, 2, 3, 3),
+        ]
+    ),
+    expected_area=10.0,  # 16 (box) - 6 (combined holes)
+    xfail=False,
+)
+
+
+def create_checkerboard(level: int):
+    base_sz = 7
+    sz = base_sz ** (level + 1)
+    exterior = shapely.box(0, 0, sz, sz)
+
+    def interiors(ilevel: int):
+        szi = base_sz**ilevel
+        return [
+            *(shapely.box(i * szi, i * szi, (i + 1) * szi, (i + 1) * szi) for i in range(1, 6)),
+            *(shapely.box(i * szi, (i + 2) * szi, (i + 1) * szi, (i + 3) * szi) for i in range(1, 4)),
+            *(shapely.box(i * szi, (i + 4) * szi, (i + 1) * szi, (i + 5) * szi) for i in range(1, 2)),
+            *(shapely.box((i + 2) * szi, i * szi, (i + 3) * szi, (i + 1) * szi) for i in range(1, 4)),
+            *(shapely.box((i + 4) * szi, i * szi, (i + 5) * szi, (i + 1) * szi) for i in range(1, 2)),
+        ]
+
+    holes = []
+    for ilevel in range(level + 1):
+        holes.extend(interiors(ilevel))
+        if ilevel < level:
+            offset = base_sz ** (ilevel + 1)
+            holes = [shapely.transform(h, lambda p, o=offset: p + np.array([2 * o, 3 * o])) for h in holes]
+
+    interior = shapely.unary_union(holes)
+    expected_area = exterior.area - interior.area
+    return {"exterior": exterior, "interior": interior, "expected_area": expected_area}
+
+
+CHECKERBOARD_LVL0_CASE = OGCValidityTestCase(
+    id="checkerboard_level_0",
+    description="""
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=0),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+
+CHECKERBOARD_LVL1_CASE = OGCValidityTestCase(
+    id="checkerboard_level_1",
+    description="""
+    A single level nested version of the checkerboard pattern where holes share vertices and the sub-checkerboard
+    is itself the level 0 checkerboard and located at (14,21):
+
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=1),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+
+CHECKERBOARD_LVL2_CASE = OGCValidityTestCase(
+    id="checkerboard_level_2",
+    description="""
+    A two-level nested version of the checkerboard pattern where holes share vertices and the sub-checkerboards
+    are themselves the level 1 checkerboard located at (98,147):
+        0   1   2   3   4   5   6   7
+      7 ┌───────────────────────────┐
+        │                           │
+      6 │   ┌───┐   ┌───┐   ┌───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      5 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      4 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │   ░ = holes
+      3 │   └───●───●───●───●───┘   │
+        │       │ ░ │   │ ░ │       │
+      2 │   ┌───●───●───●───●───┐   │
+        │   │ ░ │   │ ░ │   │ ░ │   │
+      1 │   └───┘   └───┘   └───┘   │
+        │                           │
+      0 └───────────────────────────┘
+    """,
+    **create_checkerboard(level=2),
+    xfail=True,
+    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+)
+
+
+class TestOGCValidity:
+    """Tests documenting known OGC validity issues in iOverlay.
 
     OGC Simple Feature Specification (ISO 19125-1) states:
     "The interior of every Surface is a connected point set."
+
+    When holes share two or more vertices, they can disconnect the interior,
+    creating an invalid polygon. Shapely handles this by splitting into
+    multiple valid polygons; iOverlay currently does not.
     """
 
-    @pytest.mark.xfail(reason="iOverlay produces invalid polygons when holes share 2+ vertices")
-    def test_holes_sharing_two_vertices_creates_invalid_polygon(
-        self, box_shapes: Shapes, top_l_shapes: Shapes, bottom_l_shapes: Shapes
-    ) -> None:
-        """Test that holes sharing two vertices creates disconnected interior."""
-        # Subtract both L shapes from the box using iOverlay
-        step1 = overlay(box_shapes, top_l_shapes, OverlayRule.Difference, FillRule.EvenOdd)
-        result = overlay(step1, bottom_l_shapes, OverlayRule.Difference, FillRule.EvenOdd)
-
-        # Convert to Shapely (without filtering invalid polygons)
-        result_mp = shapes_to_multipolygon_unchecked(result)
-
-        # Verify area is correct before checking validity
-        assert result_mp.area == pytest.approx(EXPECTED_AREA)
-
-        # The result should be valid (OGC requirement)
-        assert result_mp.is_valid, f"iOverlay produced invalid geometry: {explain_validity(result_mp)}"
-
-    def test_shapely_handles_touching_holes_correctly(
-        self, box_shapely: shapely.Polygon, top_l_shapely: shapely.Polygon, bottom_l_shapely: shapely.Polygon
-    ) -> None:
-        """Verify that Shapely produces valid output for the same operation.
-
-        This proves that valid output is achievable - Shapely splits the
-        polygon at the pinch points to produce multiple valid polygons.
-        """
-        result = box_shapely.difference(top_l_shapely).difference(bottom_l_shapely)
-
-        # Verify area is correct
-        assert result.area == pytest.approx(EXPECTED_AREA)
-
-        # Shapely should produce a valid shapely.MultiPolygon
-        assert isinstance(result, shapely.MultiPolygon)
-
-        # Shapely splits into 2 polygons to maintain validity
-        assert len(result.geoms) == 2
-
-        assert result.is_valid, f"Shapely produced invalid geometry: {explain_validity(result)}"
-
-    @pytest.mark.xfail(reason="iOverlay produces invalid polygons when holes share 2+ vertices")
-    def test_ioverlay_vs_shapely_validity(
-        self,
-        box_shapely: shapely.Polygon,
-        top_l_shapely: shapely.Polygon,
-        bottom_l_shapely: shapely.Polygon,
-        box_shapes: Shapes,
-        top_l_shapes: Shapes,
-        bottom_l_shapes: Shapes,
-    ) -> None:
-        """Compare iOverlay and Shapely results for the same operation.
+    @pytest.mark.parametrize(
+        "case",
+        [
+            TWO_HOLES_CASE.pytest_param(),
+            SINGLE_HOLE_CASE.pytest_param(),
+            CHECKERBOARD_LVL0_CASE.pytest_param(),
+            CHECKERBOARD_LVL1_CASE.pytest_param(),
+            CHECKERBOARD_LVL2_CASE.pytest_param(),
+        ],
+    )
+    def test_ioverlay_vs_shapely_validity(self, case: OGCValidityTestCase) -> None:
+        """Compare iOverlay and Shapely results for difference operations.
 
         Both should produce same total area and valid geometry.
         """
+        exterior_shapes = geometry_to_shapes(case.exterior)
+        interior_shapes = geometry_to_shapes(case.interior)
+
         # iOverlay result
-        step1 = overlay(box_shapes, top_l_shapes, OverlayRule.Difference, FillRule.EvenOdd)
-        ioverlay_result = overlay(step1, bottom_l_shapes, OverlayRule.Difference, FillRule.EvenOdd)
+        ioverlay_result = overlay(exterior_shapes, interior_shapes, OverlayRule.Difference, FillRule.EvenOdd)
         ioverlay_mp = shapes_to_multipolygon_unchecked(ioverlay_result)
 
         # Shapely result
-        shapely_result = box_shapely.difference(top_l_shapely).difference(bottom_l_shapely)
+        shapely_result = case.exterior.difference(case.interior)
 
         # Both should have correct area
-        assert ioverlay_mp.area == pytest.approx(EXPECTED_AREA)
-        assert shapely_result.area == pytest.approx(EXPECTED_AREA)
+        assert ioverlay_mp.area == pytest.approx(case.expected_area)
+        assert shapely_result.area == pytest.approx(case.expected_area)
 
-        # Both should be valid
+        # Shapely should produce valid MultiPolygon split into 2 polygons
+        assert isinstance(shapely_result, shapely.MultiPolygon)
+        assert len(shapely_result.geoms) == 2
         assert shapely_result.is_valid, f"Shapely produced invalid geometry: {explain_validity(shapely_result)}"
+
+        # iOverlay should also be valid (this is what fails)
         assert ioverlay_mp.is_valid, f"iOverlay produced invalid geometry: {explain_validity(ioverlay_mp)}"
+
+        # Results should be geometrically equal
+        assert ioverlay_mp.equals(shapely_result), f"{ioverlay_mp.wkt=} != {shapely_result.wkt=}"
