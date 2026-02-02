@@ -1,5 +1,8 @@
 """Tests for Boolean overlay operations."""
 
+import math
+
+import pytest
 import shapely
 
 from i_overlay import (
@@ -409,3 +412,128 @@ class TestOverlayWithCircles:
         assert abs(result_geom.area - expected.area) < 1e-6
         # Verify the symmetric difference is negligible (shapes are equivalent)
         assert result_geom.symmetric_difference(expected).area < 1e-6
+
+
+class TestOverlayScale:
+    """Tests for the scale parameter."""
+
+    def test_overlay_with_scale(self) -> None:
+        """Test overlay with explicit scale parameter."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=1000.0)
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)
+
+    def test_overlay_with_grid_scale(self) -> None:
+        """Test overlay with grid-based scale (scale = 1/grid_size)."""
+        subject = box(0.0, 0.0, 10.0, 10.0)
+        clip = box(5.0, 5.0, 15.0, 15.0)
+
+        grid_size = 0.001
+        result = overlay(subject, clip, OverlayRule.Intersect, FillRule.EvenOdd, scale=1.0 / grid_size)
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(5.0, 5.0, 10.0, 10.0)
+        assert result_geom.equals(expected)
+
+    def test_overlay_scale_produces_same_result_as_auto(self) -> None:
+        """Test that scale produces equivalent results to auto-scaling."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        auto_result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd)
+        scaled_result = overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=1000.0)
+
+        auto_geom = shapes_to_multipolygon(auto_result)
+        scaled_geom = shapes_to_multipolygon(scaled_result)
+
+        assert auto_geom.equals(scaled_geom)
+
+    def test_overlay_scale_invalid_negative(self) -> None:
+        """Test that negative scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be positive"):
+            overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=-1.0)
+
+    def test_overlay_scale_invalid_zero(self) -> None:
+        """Test that zero scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be positive"):
+            overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=0.0)
+
+    def test_overlay_scale_invalid_nan(self) -> None:
+        """Test that NaN scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be finite"):
+            overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=math.nan)
+
+    def test_overlay_scale_invalid_infinity(self) -> None:
+        """Test that infinity scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be finite"):
+            overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=math.inf)
+
+    def test_overlay_scale_too_large(self) -> None:
+        """Test that excessively large scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        # Scale of 2^32 should exceed safe integer bounds
+        huge_scale = float(1 << 32)
+        with pytest.raises(ValueError, match="scale too large"):
+            overlay(subject, clip, OverlayRule.Union, FillRule.EvenOdd, scale=huge_scale)
+
+    def test_overlay_with_scale_and_options(self) -> None:
+        """Test overlay with both scale and options."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(1.0, 0.0, 2.0, 1.0)
+
+        options = OverlayOptions(
+            preserve_input_collinear=True,
+            output_direction=ContourDirection.Clockwise,
+        )
+
+        result = overlay(
+            subject,
+            clip,
+            OverlayRule.Union,
+            FillRule.EvenOdd,
+            options=options,
+            scale=1000.0,
+        )
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 2.0, 1.0)
+        assert result_geom.equals(expected)
+
+    def test_overlay_with_scale_and_solver(self) -> None:
+        """Test overlay with both scale and solver."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        solver = Solver(strategy=Strategy.List)
+
+        result = overlay(
+            subject,
+            clip,
+            OverlayRule.Union,
+            FillRule.EvenOdd,
+            solver=solver,
+            scale=1000.0,
+        )
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 1.5, 1.0)
+        assert result_geom.equals(expected)

@@ -1,5 +1,8 @@
 """Tests for FloatOverlayGraph class."""
 
+import math
+
+import pytest
 import shapely
 
 from i_overlay import (
@@ -255,3 +258,119 @@ class TestFloatOverlayGraphRepr:
         assert "FloatOverlayGraph" in r
         assert "subject_count=1" in r
         assert "clip_count=1" in r
+
+
+class TestFloatOverlayGraphScale:
+    """Tests for FloatOverlayGraph with scale parameter."""
+
+    def test_with_scale(self) -> None:
+        """Test FloatOverlayGraph with explicit scale."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=1000.0)
+        result = graph.extract_shapes(OverlayRule.Union)
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 2.0, 2.0).union(shapely.box(1.0, 1.0, 3.0, 3.0))
+        assert result_geom.equals(expected)
+
+    def test_with_scale_multiple_extractions(self) -> None:
+        """Test multiple extractions with fixed scale."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=1000.0)
+
+        subj_geom = shapely.box(0.0, 0.0, 2.0, 2.0)
+        clip_geom = shapely.box(1.0, 1.0, 3.0, 3.0)
+
+        union = graph.extract_shapes(OverlayRule.Union)
+        assert shapes_to_multipolygon(union).equals(subj_geom.union(clip_geom))
+
+        intersection = graph.extract_shapes(OverlayRule.Intersect)
+        assert shapes_to_multipolygon(intersection).equals(subj_geom.intersection(clip_geom))
+
+    def test_with_scale_and_options(self) -> None:
+        """Test FloatOverlayGraph with scale and options."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        options = OverlayOptions(preserve_input_collinear=True)
+        graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, options=options, scale=1000.0)
+
+        result = graph.extract_shapes(OverlayRule.Union)
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 2.0, 2.0).union(shapely.box(1.0, 1.0, 3.0, 3.0))
+        assert result_geom.equals(expected)
+
+    def test_with_scale_and_solver(self) -> None:
+        """Test FloatOverlayGraph with scale and solver."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, solver=Solver.LIST, scale=1000.0)
+
+        result = graph.extract_shapes(OverlayRule.Union)
+        result_geom = shapes_to_multipolygon(result)
+
+        expected = shapely.box(0.0, 0.0, 2.0, 2.0).union(shapely.box(1.0, 1.0, 3.0, 3.0))
+        assert result_geom.equals(expected)
+
+    def test_scale_invalid_negative(self) -> None:
+        """Test that negative scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be positive"):
+            FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=-1.0)
+
+    def test_scale_invalid_zero(self) -> None:
+        """Test that zero scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be positive"):
+            FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=0.0)
+
+    def test_scale_invalid_nan(self) -> None:
+        """Test that NaN scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be finite"):
+            FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=math.nan)
+
+    def test_scale_invalid_infinity(self) -> None:
+        """Test that infinity scale raises ValueError."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        with pytest.raises(ValueError, match="scale must be finite"):
+            FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=math.inf)
+
+    def test_scale_too_large(self) -> None:
+        """Test that excessively large scale raises ValueError during extraction."""
+        subject = box(0.0, 0.0, 1.0, 1.0)
+        clip = box(0.5, 0.0, 1.5, 1.0)
+
+        # Scale too large error is detected when creating the FloatOverlay,
+        # which happens during extract_shapes() rather than construction
+        huge_scale = float(1 << 32)
+        graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=huge_scale)
+        with pytest.raises(ValueError, match="scale too large"):
+            graph.extract_shapes(OverlayRule.Union)
+
+    def test_scale_produces_same_result_as_auto(self) -> None:
+        """Test that scale produces equivalent results to auto-scaling."""
+        subject = box(0.0, 0.0, 2.0, 2.0)
+        clip = box(1.0, 1.0, 3.0, 3.0)
+
+        auto_graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd)
+        scaled_graph = FloatOverlayGraph(subject, clip, FillRule.EvenOdd, scale=1000.0)
+
+        auto_result = auto_graph.extract_shapes(OverlayRule.Union)
+        scaled_result = scaled_graph.extract_shapes(OverlayRule.Union)
+
+        assert shapes_to_multipolygon(auto_result).equals(shapes_to_multipolygon(scaled_result))
