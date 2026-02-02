@@ -14,7 +14,7 @@ import pytest
 import shapely
 from shapely.validation import explain_validity
 
-from i_overlay import FillRule, OverlayRule, overlay
+from i_overlay import FillRule, OverlayOptions, OverlayRule, overlay
 
 from .shapely_utils import Shapes, geometry_to_shapes
 
@@ -87,8 +87,7 @@ TWO_HOLES_CASE = OGCValidityTestCase(
         ]
     ),
     expected_area=19.0,  # 25 (box) - 3 (top_l) - 3 (bottom_l)
-    xfail=True,
-    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+    xfail=False,
 )
 
 SINGLE_HOLE_CASE = OGCValidityTestCase(
@@ -168,8 +167,7 @@ CHECKERBOARD_LVL0_CASE = OGCValidityTestCase(
       0 └───────────────────────────┘
     """,
     **create_checkerboard(level=0),
-    xfail=True,
-    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+    xfail=False,
 )
 
 
@@ -197,8 +195,7 @@ CHECKERBOARD_LVL1_CASE = OGCValidityTestCase(
       0 └───────────────────────────┘
     """,
     **create_checkerboard(level=1),
-    xfail=True,
-    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+    xfail=False,
 )
 
 
@@ -225,8 +222,7 @@ CHECKERBOARD_LVL2_CASE = OGCValidityTestCase(
       0 └───────────────────────────┘
     """,
     **create_checkerboard(level=2),
-    xfail=True,
-    xfail_reason="iOverlay produces invalid polygons when holes share 2+ vertices",
+    xfail=False,
 )
 
 
@@ -259,8 +255,14 @@ class TestOGCValidity:
         exterior_shapes = geometry_to_shapes(case.exterior)
         interior_shapes = geometry_to_shapes(case.interior)
 
-        # iOverlay result
-        ioverlay_result = overlay(exterior_shapes, interior_shapes, OverlayRule.Difference, FillRule.EvenOdd)
+        # iOverlay result (with OGC validity mode)
+        ioverlay_result = overlay(
+            exterior_shapes,
+            interior_shapes,
+            OverlayRule.Difference,
+            FillRule.EvenOdd,
+            options=OverlayOptions.ogc(),
+        )
         ioverlay_mp = shapes_to_multipolygon_unchecked(ioverlay_result)
 
         # Shapely result
@@ -270,12 +272,10 @@ class TestOGCValidity:
         assert ioverlay_mp.area == pytest.approx(case.expected_area)
         assert shapely_result.area == pytest.approx(case.expected_area)
 
-        # Shapely should produce valid MultiPolygon split into 2 polygons
-        assert isinstance(shapely_result, shapely.MultiPolygon)
-        assert len(shapely_result.geoms) == 2
+        # Shapely should produce valid geometry
         assert shapely_result.is_valid, f"Shapely produced invalid geometry: {explain_validity(shapely_result)}"
 
-        # iOverlay should also be valid (this is what fails)
+        # iOverlay should also produce valid geometry (with OGC mode)
         assert ioverlay_mp.is_valid, f"iOverlay produced invalid geometry: {explain_validity(ioverlay_mp)}"
 
         # Results should be geometrically equal

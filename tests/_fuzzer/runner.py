@@ -24,6 +24,7 @@ from shapely.validation import explain_validity
 from i_overlay import (
     FillRule,
     FloatOverlayGraph,
+    OverlayOptions,
     OverlayRule,
     overlay,
 )
@@ -102,7 +103,8 @@ class TestCase:
     def _run_overlay(self, overlay_rule: OverlayRule, fill_rule: FillRule) -> tuple[Shapes | None, str | None]:
         """Run an overlay operation and return result with any error."""
         try:
-            result = overlay(self.subject, self.clip, overlay_rule, fill_rule)
+            options = OverlayOptions.ogc()
+            result = overlay(self.subject, self.clip, overlay_rule, fill_rule, options=options)
             error = self._validate_result(result)
             return result, error
         except Exception as e:
@@ -198,7 +200,7 @@ class TestCase:
             graph = None
             graph_error = None
             try:
-                graph = FloatOverlayGraph(self.subject, self.clip, fill_rule)
+                graph = FloatOverlayGraph(self.subject, self.clip, fill_rule, options=OverlayOptions.ogc())
             except Exception as e:
                 graph_error = f"{type(e).__name__}: {e}"
             elapsed = time.monotonic() - t0
@@ -328,7 +330,13 @@ def save_failure_report(
                 try:
                     overlay_rule = getattr(OverlayRule, overlay_name)
                     fill_rule = getattr(FillRule, fill_name)
-                    result = overlay(test_case.subject, test_case.clip, overlay_rule, fill_rule)
+                    result = overlay(
+                        test_case.subject,
+                        test_case.clip,
+                        overlay_rule,
+                        fill_rule,
+                        options=OverlayOptions.ogc(),
+                    )
                     # Only save unique results (same overlay+fill combo)
                     key = f"{overlay_name}_{fill_name}"
                     if key not in failing_results:

@@ -116,7 +116,7 @@ impl PyStrokeStyle {
     pub fn to_rust_style(&self) -> StrokeStyle<[f64; 2], f64> {
         // Use custom cap points if provided, otherwise use the cap style
         let start_cap = if let Some(ref points) = self.start_cap_points {
-            LineCap::Custom(points.clone())
+            LineCap::Custom(points.clone().into())
         } else {
             match self.start_cap {
                 PyLineCap::Butt => LineCap::Butt,
@@ -126,7 +126,7 @@ impl PyStrokeStyle {
         };
 
         let end_cap = if let Some(ref points) = self.end_cap_points {
-            LineCap::Custom(points.clone())
+            LineCap::Custom(points.clone().into())
         } else {
             match self.end_cap {
                 PyLineCap::Butt => LineCap::Butt,

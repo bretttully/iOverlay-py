@@ -219,6 +219,20 @@ pub struct PyOverlayOptions {
     /// Minimum area threshold to include a contour in the result.
     #[pyo3(get)]
     pub min_output_area: u64,
+    /// Enable OGC Simple Feature Specification compliant output.
+    ///
+    /// When enabled, ensures that the interior of every polygon is a connected
+    /// point set, which is required for GIS applications following the OGC
+    /// Simple Feature Specification (ISO 19125-1).
+    #[pyo3(get, name = "ogc_rules")]
+    pub ogc: bool,
+    /// Clean the result from precision-related issues.
+    ///
+    /// When enabled, removes duplicate or nearly identical points from the output.
+    /// This is especially useful for f32 coordinates but less necessary for f64.
+    /// Default is False for f64 precision.
+    #[pyo3(get)]
+    pub clean_result: bool,
 }
 
 #[gen_stub_pymethods]
@@ -230,38 +244,48 @@ impl PyOverlayOptions {
         preserve_input_collinear=false,
         output_direction=PyContourDirection::CounterClockwise,
         preserve_output_collinear=false,
-        min_output_area=0
+        min_output_area=0,
+        ogc=false,
+        clean_result=false
     ))]
     fn new(
         preserve_input_collinear: bool,
         output_direction: PyContourDirection,
         preserve_output_collinear: bool,
         min_output_area: u64,
+        ogc: bool,
+        clean_result: bool,
     ) -> Self {
         Self {
             preserve_input_collinear,
             output_direction,
             preserve_output_collinear,
             min_output_area,
+            ogc,
+            clean_result,
         }
+    }
+
+    /// Create OverlayOptions configured for OGC-valid output.
+    ///
+    /// Returns options with `ogc_rules=True` and default values for all other fields.
+    /// This ensures output polygons comply with the OGC Simple Feature Specification.
+    #[staticmethod]
+    fn ogc() -> Self {
+        IntOverlayOptions::ogc().into()
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "OverlayOptions(preserve_input_collinear={}, output_direction={:?}, preserve_output_collinear={}, min_output_area={})",
-            self.preserve_input_collinear, self.output_direction, self.preserve_output_collinear, self.min_output_area
+            "OverlayOptions(preserve_input_collinear={}, output_direction={:?}, preserve_output_collinear={}, min_output_area={}, ogc={}, clean_result={})",
+            self.preserve_input_collinear, self.output_direction, self.preserve_output_collinear, self.min_output_area, self.ogc, self.clean_result
         )
     }
 }
 
 impl Default for PyOverlayOptions {
     fn default() -> Self {
-        Self {
-            preserve_input_collinear: false,
-            output_direction: PyContourDirection::CounterClockwise,
-            preserve_output_collinear: false,
-            min_output_area: 0,
-        }
+        IntOverlayOptions::default().into()
     }
 }
 
@@ -272,6 +296,21 @@ impl From<&PyOverlayOptions> for IntOverlayOptions {
             output_direction: ContourDirection::from(value.output_direction),
             preserve_output_collinear: value.preserve_output_collinear,
             min_output_area: value.min_output_area,
+            ogc: value.ogc,
+        }
+    }
+}
+
+impl From<IntOverlayOptions> for PyOverlayOptions {
+    fn from(value: IntOverlayOptions) -> Self {
+        PyOverlayOptions {
+            preserve_input_collinear: value.preserve_input_collinear,
+            output_direction: PyContourDirection::from(value.output_direction),
+            preserve_output_collinear: value.preserve_output_collinear,
+            min_output_area: value.min_output_area,
+            ogc: value.ogc,
+            // f64 default is false (only f32 needs cleaning)
+            clean_result: false,
         }
     }
 }
@@ -283,6 +322,7 @@ pub fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f6
         output_direction: py_options.output_direction.into(),
         preserve_output_collinear: py_options.preserve_output_collinear,
         min_output_area: py_options.min_output_area as f64,
-        clean_result: true,
+        ogc: py_options.ogc,
+        clean_result: py_options.clean_result,
     }
 }

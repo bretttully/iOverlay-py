@@ -116,6 +116,8 @@ class TestOverlayOptions:
         assert o.output_direction == ContourDirection.CounterClockwise
         assert o.preserve_output_collinear is False
         assert o.min_output_area == 0
+        assert o.ogc_rules is False
+        assert o.clean_result is False
 
     def test_custom_construction(self) -> None:
         """Test creating OverlayOptions with custom values."""
@@ -130,11 +132,35 @@ class TestOverlayOptions:
         assert o.preserve_output_collinear is True
         assert o.min_output_area == 100
 
+    def test_ogc_explicit(self) -> None:
+        """Test creating OverlayOptions with ogc=True."""
+        o = OverlayOptions(ogc=True)
+        assert o.ogc_rules is True
+        assert o.preserve_input_collinear is False
+        assert o.output_direction == ContourDirection.CounterClockwise
+
+    def test_ogc_factory(self) -> None:
+        """Test OverlayOptions.ogc() factory method."""
+        o = OverlayOptions.ogc()
+        assert o.ogc_rules is True
+        assert o.preserve_input_collinear is False
+        assert o.output_direction == ContourDirection.CounterClockwise
+        assert o.preserve_output_collinear is False
+        assert o.min_output_area == 0
+        assert o.clean_result is False  # f64 default
+
     def test_repr(self) -> None:
         """Test repr representation."""
         o = OverlayOptions()
         r = repr(o)
         assert "OverlayOptions" in r
+        assert "ogc=false" in r.lower()
+
+    def test_repr_with_ogc(self) -> None:
+        """Test repr representation with ogc enabled."""
+        o = OverlayOptions.ogc()
+        r = repr(o)
+        assert "ogc=true" in r.lower()
 
 
 class TestClipRule:

@@ -23,7 +23,7 @@ use std::process::ExitCode;
 
 use i_overlay_core::core::fill_rule::FillRule;
 use i_overlay_core::core::overlay_rule::OverlayRule;
-use i_overlay_core::float::overlay::FloatOverlay;
+use i_overlay_core::float::overlay::{FloatOverlay, OverlayOptions};
 
 use serde::Deserialize;
 
@@ -76,7 +76,9 @@ fn test_overlay(
 ) -> Result<Shapes, String> {
     // Use catch_unwind to handle panics
     let result = std::panic::catch_unwind(|| {
-        let mut overlay = FloatOverlay::with_subj_and_clip(subject, clip);
+        let options = OverlayOptions::ogc();
+        let mut overlay =
+            FloatOverlay::with_subj_and_clip_custom(subject, clip, options, Default::default());
         overlay.overlay(overlay_rule, fill_rule)
     });
 

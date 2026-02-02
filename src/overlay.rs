@@ -29,7 +29,8 @@ fn build_overlay_options(py_options: &PyOverlayOptions) -> OverlayOptions<f64> {
         output_direction: py_options.output_direction.into(),
         preserve_output_collinear: py_options.preserve_output_collinear,
         min_output_area: py_options.min_output_area as f64,
-        clean_result: true,
+        ogc: py_options.ogc,
+        clean_result: py_options.clean_result,
     }
 }
 

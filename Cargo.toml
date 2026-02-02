@@ -26,7 +26,7 @@ extension-module = ["pyo3/extension-module"]
 
 [dependencies]
 # iOverlay geometry library - alias to avoid name conflict with lib.name = "i_overlay"
-i_overlay_core = { package = "i_overlay", version = "4.1" }
+i_overlay_core = { package = "i_overlay", version = "4.3" }
 i_float = "1.15"
 i_shape = "1.14"
 
